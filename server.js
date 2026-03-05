@@ -204,18 +204,18 @@ app.post('/api/records',
       const finalEarnings = hasEarnings ? parseFloat(earnings) : (existing?.earnings || 0);
 
       // Auto-calculate personal miles: gap between previous record's end miles and this record's start miles
-      let finalPersonalMiles = existing?.personal_miles || 0;
-      if (hasPersonalMiles) {
-        finalPersonalMiles = parseFloat(personalMiles);
-      } else {
-        // Determine start miles for this record (manual > AI > existing)
+      // Personal miles are attributed to the PREVIOUS day (driven after that day's work ended)
+      let finalPersonalMiles = hasPersonalMiles ? parseFloat(personalMiles) : (existing?.personal_miles || 0);
+      if (!hasPersonalMiles) {
         const thisStart = hasStartMiles ? parseFloat(startMiles) : (extractedStartMiles !== null ? extractedStartMiles : (existing?.start_miles || null));
         if (thisStart !== null) {
-          // Find the most recent previous record with end miles (odometer_reading)
-          const prev = db.prepare('SELECT odometer_reading FROM records WHERE date < ? AND odometer_reading IS NOT NULL ORDER BY date DESC LIMIT 1').get(finalDate);
+          const prev = db.prepare('SELECT id, odometer_reading, personal_miles FROM records WHERE date < ? AND odometer_reading IS NOT NULL ORDER BY date DESC LIMIT 1').get(finalDate);
           if (prev && prev.odometer_reading) {
             const gap = thisStart - prev.odometer_reading;
-            if (gap > 0) finalPersonalMiles = gap;
+            if (gap > 0) {
+              // Update the previous record's personal miles
+              db.prepare('UPDATE records SET personal_miles = ? WHERE id = ?').run(gap, prev.id);
+            }
           }
         }
       }
