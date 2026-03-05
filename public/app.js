@@ -1162,6 +1162,10 @@ function refreshTax() {
   const uberEarnings = yearRecords.reduce((s, r) => s + (r.earnings || 0), 0);
   const uberGas = yearRecords.reduce((s, r) => s + (r.gas_cost || 0), 0);
 
+  // Uber-tagged transactions (tolls, parking, car wash, tickets, etc.)
+  const uberTx = transactions.filter(t => t.business === 'Uber' && new Date(t.date + 'T00:00:00').getFullYear() === year);
+  const uberTxExpenses = uberTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
   let businessMiles = 0;
   yearRecords.forEach(r => {
     if (r.start_miles && r.odometer_reading) {
@@ -1175,7 +1179,7 @@ function refreshTax() {
   document.getElementById('tax-uber-earnings').textContent = fmt(uberEarnings);
   document.getElementById('tax-uber-biz-miles').textContent = businessMiles.toFixed(1) + ' mi';
   document.getElementById('tax-uber-mileage-ded').textContent = '-' + fmt(mileageDed);
-  document.getElementById('tax-uber-gas').textContent = fmt(uberGas);
+  document.getElementById('tax-uber-gas').textContent = fmt(uberGas + uberTxExpenses);
   document.getElementById('tax-uber-net').textContent = fmt(uberNetTaxable);
 
   // === 易北教育 ===
