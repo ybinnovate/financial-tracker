@@ -844,29 +844,60 @@ batchOdoBtn.addEventListener('click', async () => {
     byDate[ex.date].push(ex);
   }
 
-  // Phase 3: For each date group, pair start/end and create records
+  // Phase 3: Classify and create records (chronological order for gap calc)
+  //
+  // Classification:
+  //   Reading < 1000  → trip meter (personal miles indicator)
+  //   Reading >= 1000 → actual odometer reading
+  //
+  // Personal miles logic (handled server-side):
+  //   When startMiles is set, the server finds the previous day's end miles
+  //   and calculates: gap = today's start - previous day's end
+  //   This gap is saved as the PREVIOUS day's personal_miles.
+  //   We do NOT send personalMiles explicitly — the server auto-calculates.
+  //
+  // Patterns:
+  //   trip meter + 1 odometer → start-of-day (odometer = startMiles)
+  //   2 odometers            → start + end (lower = start, higher = end)
+  //   1 odometer alone       → end-of-day (odometer = odometerReading)
   let saved = 0;
   let errors = 0;
-  const dates = Object.keys(byDate).sort();
+  let autoPaired = 0;
+  let tripMeterDays = 0;
+  const dates = Object.keys(byDate).sort(); // chronological for gap calc chain
   for (let di = 0; di < dates.length; di++) {
     const dt = dates[di];
-    const group = byDate[dt].sort((a, b) => a.reading - b.reading);
+    const group = byDate[dt];
     batchOdoStatus.textContent = `Creating record ${di + 1} of ${dates.length} (${dt})...`;
+
+    const tripMeter = group.filter(e => e.reading < 1000);
+    const odometer = group.filter(e => e.reading >= 1000).sort((a, b) => a.reading - b.reading);
+    const hasTripMeter = tripMeter.length > 0;
 
     const formData = new FormData();
     formData.append('date', dt);
     formData.append('earnings', '0');
 
-    if (group.length >= 2) {
-      // Two+ photos same day: lowest = start, highest = end
-      formData.append('startMiles', group[0].reading);
-      formData.append('startImageFilename', group[0].filename);
-      formData.append('odometerReading', group[group.length - 1].reading);
-      formData.append('odometerImageFilename', group[group.length - 1].filename);
+    if (odometer.length >= 2) {
+      // Two+ odometer photos: lowest = start, highest = end
+      formData.append('startMiles', odometer[0].reading);
+      formData.append('startImageFilename', odometer[0].filename);
+      formData.append('odometerReading', odometer[odometer.length - 1].reading);
+      formData.append('odometerImageFilename', odometer[odometer.length - 1].filename);
+      autoPaired++;
+    } else if (odometer.length === 1 && hasTripMeter) {
+      // Trip meter + one odometer = start-of-day pattern
+      // Server will auto-calc personal miles from gap to previous day's end
+      formData.append('startMiles', odometer[0].reading);
+      formData.append('startImageFilename', odometer[0].filename);
+      tripMeterDays++;
+    } else if (odometer.length === 1) {
+      // Single odometer, no trip meter = end of day
+      formData.append('odometerReading', odometer[0].reading);
+      formData.append('odometerImageFilename', odometer[0].filename);
     } else {
-      // Single photo: end miles only
-      formData.append('odometerReading', group[0].reading);
-      formData.append('odometerImageFilename', group[0].filename);
+      // Only trip meter photos, no actual odometer — skip
+      continue;
     }
 
     try {
@@ -880,16 +911,15 @@ batchOdoBtn.addEventListener('click', async () => {
     }
   }
 
-  // Count photos that had no reading extracted
   const failedExtractions = extractions.filter(e => e.reading === null).length;
 
   await fetchUberRecords();
   renderUber();
 
-  let msg = `Done: ${saved} record(s) created from ${extractions.length} photos.`;
-  if (failedExtractions) msg += ` ${failedExtractions} photo(s) could not be read.`;
-  const paired = Object.values(byDate).filter(g => g.length >= 2).length;
-  if (paired) msg += ` ${paired} day(s) auto-paired start/end miles.`;
+  let msg = `Done: ${saved} record(s) from ${extractions.length} photos.`;
+  if (failedExtractions) msg += ` ${failedExtractions} unreadable.`;
+  if (autoPaired) msg += ` ${autoPaired} day(s) auto-paired start/end.`;
+  if (tripMeterDays) msg += ` ${tripMeterDays} day(s) with trip meter (start miles set, personal miles auto-calculated from gap).`;
   batchOdoStatus.textContent = msg;
   batchOdoStatus.style.color = errors ? 'var(--expense)' : 'var(--income)';
   batchOdoBtn.disabled = false;
