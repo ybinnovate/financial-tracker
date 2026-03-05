@@ -477,7 +477,7 @@ app.post('/api/extract-receipt',
 1. Store/business name
 2. Total amount paid (number)
 3. Date of purchase (YYYY-MM-DD format)
-4. Best matching expense category from this list: Food & Dining, Transportation, Housing, Utilities, Entertainment, Shopping, Healthcare, Education, Personal Care, Travel, Subscriptions, Other
+4. Best matching expense category from this list: Food & Dining, Transportation, Housing, Utilities, Entertainment, Shopping, Healthcare, Education, Personal Care, Travel, Subscriptions, Interest & Fees, Other
 
 Return a raw JSON object with keys: "storeName" (string), "amount" (number), "date" (string YYYY-MM-DD), "category" (string from the list above). No markdown, no explanation.` }
           ]
@@ -512,13 +512,15 @@ Return a raw JSON object with keys: "storeName" (string), "amount" (number), "da
 );
 
 // ── API: Extract credit card statement ──────────────────────
-const STATEMENT_PROMPT = `Analyze this credit card statement. Extract ALL individual transactions/line items.
+const STATEMENT_PROMPT = `Analyze this credit card statement. Extract ALL individual transactions/line items, INCLUDING interest charges, fees, and finance charges.
 For each transaction, determine:
 1. Date (YYYY-MM-DD format)
 2. Description/merchant name
 3. Amount (positive number)
 4. Whether it's a charge (expense) or payment/credit (income)
-5. Best matching category from: Food & Dining, Transportation, Housing, Utilities, Entertainment, Shopping, Healthcare, Education, Personal Care, Travel, Subscriptions, Other
+5. Best matching category from: Food & Dining, Transportation, Housing, Utilities, Entertainment, Shopping, Healthcare, Education, Personal Care, Travel, Subscriptions, Interest & Fees, Other
+
+IMPORTANT: Interest charges, finance charges, late fees, annual fees, and similar bank fees should be categorized as "Interest & Fees".
 
 Return a raw JSON array of objects with keys: "date" (string), "description" (string), "amount" (number), "type" ("expense" or "income"), "category" (string from list above).
 No markdown, no explanation, just the JSON array.`;

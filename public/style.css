@@ -122,6 +122,7 @@ main {
 .card-income p { color: var(--income); }
 .card-expense p { color: var(--expense); }
 .card-balance p { color: var(--accent); }
+.card-interest p { color: #fbbf24; }
 
 /* Month Selector */
 .month-selector {

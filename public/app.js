@@ -2,7 +2,7 @@
 const EXPENSE_CATEGORIES = [
   'Food & Dining', 'Transportation', 'Housing', 'Utilities',
   'Entertainment', 'Shopping', 'Healthcare', 'Education',
-  'Personal Care', 'Travel', 'Subscriptions', 'Other'
+  'Personal Care', 'Travel', 'Subscriptions', 'Interest & Fees', 'Other'
 ];
 
 const INCOME_CATEGORIES = [
@@ -13,7 +13,7 @@ const CATEGORY_ICONS = {
   'Food & Dining': '🍽️', 'Transportation': '🚗', 'Housing': '🏠',
   'Utilities': '💡', 'Entertainment': '🎬', 'Shopping': '🛒',
   'Healthcare': '🏥', 'Education': '📚', 'Personal Care': '💇',
-  'Travel': '✈️', 'Subscriptions': '📱', 'Other': '📌',
+  'Travel': '✈️', 'Subscriptions': '📱', 'Interest & Fees': '🏦', 'Other': '📌',
   'Salary': '💰', 'Freelance': '💻', 'Investments': '📈',
   'Gifts': '🎁', 'Refunds': '↩️'
 };
@@ -477,10 +477,13 @@ function refreshDashboard() {
   income += monthUber.reduce((s, r) => s + (r.earnings || 0), 0);
   expenses += monthUber.reduce((s, r) => s + (r.gas_cost || 0), 0);
 
+  const interest = monthTx.filter(t => t.type === 'expense' && t.category === 'Interest & Fees').reduce((s, t) => s + t.amount, 0);
+
   document.getElementById('total-income').textContent = '+' + fmt(income);
   document.getElementById('total-expenses').textContent = '-' + fmt(expenses);
   const balance = income - expenses;
   document.getElementById('total-balance').textContent = (balance >= 0 ? '+' : '-') + fmt(balance);
+  document.getElementById('total-interest').textContent = '-' + fmt(interest);
 
   renderCategoryChart(monthTx, monthUber);
   renderMonthlyChart();
