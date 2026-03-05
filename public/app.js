@@ -767,11 +767,14 @@ function setupImagePreview(inputId, previewId, placeholderId) {
   // Drag & drop
   const zone = input.closest('.form-group')?.querySelector('.upload-zone');
   if (!zone) return;
-  zone.addEventListener('dragenter', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => { zone.classList.remove('drag-over'); });
+  let dc = 0;
+  zone.addEventListener('dragenter', (e) => { e.preventDefault(); e.stopPropagation(); dc++; zone.classList.add('drag-over'); });
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; });
+  zone.addEventListener('dragleave', (e) => { e.stopPropagation(); dc--; if (dc <= 0) { dc = 0; zone.classList.remove('drag-over'); } });
   zone.addEventListener('drop', (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    dc = 0;
     zone.classList.remove('drag-over');
     const file = e.dataTransfer.files?.[0];
     if (file && (isImageFile(file) || file.type === 'application/pdf')) {
@@ -786,13 +789,19 @@ function setupImagePreview(inputId, previewId, placeholderId) {
 function setupDropZone(inputId) {
   const input = document.getElementById(inputId);
   if (!input) return;
-  const zone = input.parentElement.querySelector('.upload-zone');
-  if (!zone) return;
-  zone.addEventListener('dragenter', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => { zone.classList.remove('drag-over'); });
+  // Search up from input to find the nearest .upload-zone sibling
+  const container = input.closest('.form-container') || input.parentElement;
+  const zone = container.querySelector('.upload-zone');
+  if (!zone) { console.warn('No .upload-zone found for', inputId); return; }
+
+  let dragCounter = 0; // Track enter/leave on child elements
+  zone.addEventListener('dragenter', (e) => { e.preventDefault(); e.stopPropagation(); dragCounter++; zone.classList.add('drag-over'); });
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; });
+  zone.addEventListener('dragleave', (e) => { e.stopPropagation(); dragCounter--; if (dragCounter <= 0) { dragCounter = 0; zone.classList.remove('drag-over'); } });
   zone.addEventListener('drop', (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    dragCounter = 0;
     zone.classList.remove('drag-over');
     const dt = new DataTransfer();
     const droppedFiles = e.dataTransfer.files;
@@ -810,6 +819,10 @@ function setupDropZone(inputId) {
     }
   });
 }
+
+// Prevent browser from opening files dropped outside a drop zone
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
 setupDropZone('statement-file');
 setupDropZone('yb-statement-file');
 setupDropZone('batch-receipt-input');
