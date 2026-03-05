@@ -448,24 +448,34 @@ function refreshDashboard() {
   document.getElementById('current-month-label').textContent = monthLabel(currentMonth);
 
   const monthTx = transactions.filter(t => monthKey(t.date) === mk);
-  const income = monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expenses = monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  let income = monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  let expenses = monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+  // Include Uber records (earnings + gas)
+  const monthUber = uberRecords.filter(r => monthKey(r.date) === mk);
+  income += monthUber.reduce((s, r) => s + (r.earnings || 0), 0);
+  expenses += monthUber.reduce((s, r) => s + (r.gas_cost || 0), 0);
 
   document.getElementById('total-income').textContent = '+' + fmt(income);
   document.getElementById('total-expenses').textContent = '-' + fmt(expenses);
   const balance = income - expenses;
   document.getElementById('total-balance').textContent = (balance >= 0 ? '+' : '-') + fmt(balance);
 
-  renderCategoryChart(monthTx);
+  renderCategoryChart(monthTx, monthUber);
   renderMonthlyChart();
   renderBudgetProgress(mk);
 }
 
-function renderCategoryChart(monthTx) {
+function renderCategoryChart(monthTx, monthUber) {
   const expensesByCategory = {};
   monthTx.filter(t => t.type === 'expense').forEach(t => {
     expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
   });
+  // Include Uber gas in chart
+  if (monthUber) {
+    const uberGas = monthUber.reduce((s, r) => s + (r.gas_cost || 0), 0);
+    if (uberGas > 0) expensesByCategory['Gas (Uber)'] = (expensesByCategory['Gas (Uber)'] || 0) + uberGas;
+  }
 
   const labels = Object.keys(expensesByCategory);
   const data = Object.values(expensesByCategory);
@@ -512,8 +522,9 @@ function renderMonthlyChart() {
     months.push(d.toLocaleDateString('en-US', { month: 'short' }));
 
     const monthTx = transactions.filter(t => monthKey(t.date) === mk);
-    incomeData.push(monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0));
-    expenseData.push(monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0));
+    const mUber = uberRecords.filter(r => monthKey(r.date) === mk);
+    incomeData.push(monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) + mUber.reduce((s, r) => s + (r.earnings || 0), 0));
+    expenseData.push(monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) + mUber.reduce((s, r) => s + (r.gas_cost || 0), 0));
   }
 
   if (monthlyChart) monthlyChart.destroy();
