@@ -15,8 +15,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ── Uploads ─────────────────────────────────────────────────
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+const dataDir = process.env.DATA_DIR || process.cwd();
+const uploadDir = path.join(dataDir, 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),

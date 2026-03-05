@@ -595,7 +595,8 @@ textarea:focus {
   background: rgba(129, 140, 248, 0.04);
 }
 
-.upload-zone:active {
+.upload-zone:active,
+.upload-zone.drag-over {
   border-color: var(--accent);
   background: rgba(129, 140, 248, 0.08);
 }

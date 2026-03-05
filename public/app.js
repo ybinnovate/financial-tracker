@@ -619,22 +619,64 @@ function setupImagePreview(inputId, previewId, placeholderId) {
   const preview = document.getElementById(previewId);
   const placeholder = document.getElementById(placeholderId);
   if (!input) return;
+
+  function showPreview(file) {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      preview.src = reader.result;
+      preview.style.display = 'block';
+      placeholder.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
   input.addEventListener('change', (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        preview.src = reader.result;
-        preview.style.display = 'block';
-        placeholder.style.display = 'none';
-      };
-      reader.readAsDataURL(file);
-    } else {
-      preview.style.display = 'none';
-      placeholder.style.display = 'flex';
+    if (file) { showPreview(file); }
+    else { preview.style.display = 'none'; placeholder.style.display = 'flex'; }
+  });
+
+  // Drag & drop
+  const zone = input.closest('.form-group')?.querySelector('.upload-zone');
+  if (!zone) return;
+  zone.addEventListener('dragenter', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => { zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
     }
   });
 }
+
+function setupDropZone(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const zone = input.parentElement.querySelector('.upload-zone');
+  if (!zone) return;
+  zone.addEventListener('dragenter', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => { zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+}
+setupDropZone('statement-file');
+setupDropZone('yb-statement-file');
 
 // ── Uber Month Navigation ───────────────────────────────────
 document.getElementById('uber-prev-month').addEventListener('click', () => {
