@@ -428,6 +428,8 @@ document.getElementById('uber-form').addEventListener('submit', async (e) => {
       e.target.reset();
       document.getElementById('uber-date').value = new Date().toISOString().split('T')[0];
       // Reset image previews
+      document.getElementById('start-preview').style.display = 'none';
+      document.getElementById('start-placeholder').style.display = 'flex';
       document.getElementById('odometer-preview').style.display = 'none';
       document.getElementById('odometer-placeholder').style.display = 'flex';
       document.getElementById('receipt-preview').style.display = 'none';
@@ -467,6 +469,7 @@ function openUberEdit(id) {
   document.getElementById('uber-edit-id').value = record.id;
   document.getElementById('uber-edit-date').value = record.date;
   document.getElementById('uber-edit-earnings').value = record.earnings || '';
+  document.getElementById('uber-edit-start').value = record.start_miles || '';
   document.getElementById('uber-edit-odometer').value = record.odometer_reading || '';
   document.getElementById('uber-edit-personal').value = record.personal_miles || '';
   document.getElementById('uber-edit-gas').value = record.gas_cost || '';
@@ -491,6 +494,7 @@ document.getElementById('uber-edit-form').addEventListener('submit', async (e) =
   formData.append('id', document.getElementById('uber-edit-id').value);
   formData.append('date', document.getElementById('uber-edit-date').value);
   formData.append('earnings', document.getElementById('uber-edit-earnings').value);
+  formData.append('startMiles', document.getElementById('uber-edit-start').value);
   formData.append('odometerReading', document.getElementById('uber-edit-odometer').value);
   formData.append('personalMiles', document.getElementById('uber-edit-personal').value);
   formData.append('gasCost', document.getElementById('uber-edit-gas').value);
@@ -523,13 +527,13 @@ function renderUber() {
   const totalPersonal = monthRecords.reduce((s, r) => s + (r.personal_miles || 0), 0);
   const net = totalEarnings - totalGas;
 
-  const odometerReadings = monthRecords
-    .map(r => r.odometer_reading)
-    .filter(r => r !== null)
-    .sort((a, b) => a - b);
-  const totalMiles = odometerReadings.length > 1
-    ? odometerReadings[odometerReadings.length - 1] - odometerReadings[0]
-    : 0;
+  // Calculate total driven miles from start/end per day
+  let totalMiles = 0;
+  monthRecords.forEach(r => {
+    if (r.start_miles && r.odometer_reading) {
+      totalMiles += r.odometer_reading - r.start_miles;
+    }
+  });
 
   document.getElementById('uber-total-earnings').textContent = '$' + totalEarnings.toFixed(2);
   document.getElementById('uber-total-gas').textContent = '$' + totalGas.toFixed(2);
@@ -555,10 +559,28 @@ function renderUber() {
       weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
     });
 
+    // Mileage display: show start → end (driven)
+    let mileageHtml = '';
+    if (r.start_miles && r.odometer_reading) {
+      const driven = (r.odometer_reading - r.start_miles).toFixed(1);
+      mileageHtml = `<span class="value">${driven} mi driven</span>
+        <br><span style="font-size:0.65rem;color:var(--text-muted)">${r.start_miles.toLocaleString()} → ${r.odometer_reading.toLocaleString()}</span>`;
+    } else if (r.odometer_reading) {
+      mileageHtml = `<span class="value">${r.odometer_reading.toLocaleString()} mi</span>`;
+    } else if (r.start_miles) {
+      mileageHtml = `<span class="value">Start: ${r.start_miles.toLocaleString()} mi</span>`;
+    } else {
+      mileageHtml = `<span class="value">N/A</span>`;
+    }
+    if (r.personal_miles) {
+      mileageHtml += `<br><span style="font-size:0.65rem;color:var(--text-muted)">(Personal: ${r.personal_miles} mi)</span>`;
+    }
+
     let imagesHtml = '';
-    if (r.odometer_image_path || r.gas_receipt_image_path) {
+    if (r.start_image_path || r.odometer_image_path || r.gas_receipt_image_path) {
       imagesHtml = '<div class="uber-record-images">';
-      if (r.odometer_image_path) imagesHtml += `<a href="${r.odometer_image_path}" target="_blank"><img src="${r.odometer_image_path}" alt="Odometer"></a>`;
+      if (r.start_image_path) imagesHtml += `<a href="${r.start_image_path}" target="_blank"><img src="${r.start_image_path}" alt="Start odometer"></a>`;
+      if (r.odometer_image_path) imagesHtml += `<a href="${r.odometer_image_path}" target="_blank"><img src="${r.odometer_image_path}" alt="End odometer"></a>`;
       if (r.gas_receipt_image_path) imagesHtml += `<a href="${r.gas_receipt_image_path}" target="_blank"><img src="${r.gas_receipt_image_path}" alt="Receipt"></a>`;
       imagesHtml += '</div>';
     }
@@ -575,8 +597,7 @@ function renderUber() {
         <div class="uber-record-grid">
           <div class="uber-record-field">
             <label>Mileage</label>
-            <span class="value">${r.odometer_reading ? r.odometer_reading.toLocaleString() + ' mi' : 'N/A'}</span>
-            ${r.personal_miles ? `<br><span style="font-size:0.65rem;color:var(--text-muted)">(Personal: ${r.personal_miles} mi)</span>` : ''}
+            ${mileageHtml}
           </div>
           <div class="uber-record-field">
             <label>Earnings</label>
@@ -608,6 +629,7 @@ async function init() {
   renderTransactions();
   renderBudgets();
   refreshDashboard();
+  setupImagePreview('uber-start-image', 'start-preview', 'start-placeholder');
   setupImagePreview('uber-odometer-image', 'odometer-preview', 'odometer-placeholder');
   setupImagePreview('uber-receipt-image', 'receipt-preview', 'receipt-placeholder');
   await fetchUberRecords();

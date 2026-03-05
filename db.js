@@ -73,9 +73,15 @@ async function initDb() {
       notes TEXT,
       notion_page_id TEXT,
       personal_miles REAL,
+      start_miles REAL,
+      start_image_path TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: add start_miles columns to existing databases
+  try { db.run('ALTER TABLE records ADD COLUMN start_miles REAL'); } catch (e) {}
+  try { db.run('ALTER TABLE records ADD COLUMN start_image_path TEXT'); } catch (e) {}
   saveToFile();
 
   return wrapper;

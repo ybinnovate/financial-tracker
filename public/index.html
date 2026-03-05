@@ -177,40 +177,53 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Odometer Photo</label>
-              <input type="file" id="uber-odometer-image" name="odometerImage" accept="image/*" style="display:none">
-              <div class="upload-zone" id="odometer-upload-zone" onclick="document.getElementById('uber-odometer-image').click()">
-                <div class="upload-placeholder" id="odometer-placeholder">
-                  <span class="upload-icon">&#128247;</span>
-                  <span>Tap to take photo of odometer</span>
-                  <span class="upload-hint">(AI will extract mileage)</span>
+              <label>Start of Day Odometer</label>
+              <input type="file" id="uber-start-image" name="startOdometerImage" accept="image/*" style="display:none">
+              <div class="upload-zone" onclick="document.getElementById('uber-start-image').click()">
+                <div class="upload-placeholder" id="start-placeholder">
+                  <span class="upload-icon">&#127749;</span>
+                  <span>Tap: morning odometer</span>
+                  <span class="upload-hint">(AI extracts miles + date from photo)</span>
                 </div>
-                <img id="odometer-preview" class="upload-preview" style="display:none" alt="Odometer preview">
+                <img id="start-preview" class="upload-preview" style="display:none" alt="Start odometer">
               </div>
-              <label style="margin-top:0.35rem">Manual entry (optional)</label>
-              <input type="number" id="uber-odometer" name="odometerReading" step="0.1" placeholder="e.g. 45230.5">
+              <label style="margin-top:0.35rem">Manual start miles (optional)</label>
+              <input type="number" id="uber-start-miles" name="startMiles" step="0.1" placeholder="e.g. 45200">
             </div>
             <div class="form-group">
-              <label>Gas Receipt Photo</label>
-              <input type="file" id="uber-receipt-image" name="gasReceiptImage" accept="image/*" style="display:none">
-              <div class="upload-zone" id="receipt-upload-zone" onclick="document.getElementById('uber-receipt-image').click()">
-                <div class="upload-placeholder" id="receipt-placeholder">
-                  <span class="upload-icon">&#9981;</span>
-                  <span>Tap to take photo of receipt</span>
-                  <span class="upload-hint">(AI will extract cost)</span>
+              <label>End of Day Odometer</label>
+              <input type="file" id="uber-odometer-image" name="odometerImage" accept="image/*" style="display:none">
+              <div class="upload-zone" onclick="document.getElementById('uber-odometer-image').click()">
+                <div class="upload-placeholder" id="odometer-placeholder">
+                  <span class="upload-icon">&#127751;</span>
+                  <span>Tap: evening odometer</span>
+                  <span class="upload-hint">(AI extracts miles + date from photo)</span>
                 </div>
-                <img id="receipt-preview" class="upload-preview" style="display:none" alt="Receipt preview">
+                <img id="odometer-preview" class="upload-preview" style="display:none" alt="End odometer">
               </div>
-              <label style="margin-top:0.35rem">Manual entry (optional)</label>
-              <input type="number" id="uber-gas" name="gasCost" step="0.01" min="0" placeholder="0.00">
+              <label style="margin-top:0.35rem">Manual end miles (optional)</label>
+              <input type="number" id="uber-odometer" name="odometerReading" step="0.1" placeholder="e.g. 45330">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
+              <label>Gas Receipt Photo</label>
+              <input type="file" id="uber-receipt-image" name="gasReceiptImage" accept="image/*" style="display:none">
+              <div class="upload-zone" onclick="document.getElementById('uber-receipt-image').click()">
+                <div class="upload-placeholder" id="receipt-placeholder">
+                  <span class="upload-icon">&#9981;</span>
+                  <span>Tap: gas receipt</span>
+                  <span class="upload-hint">(AI will extract cost)</span>
+                </div>
+                <img id="receipt-preview" class="upload-preview" style="display:none" alt="Receipt preview">
+              </div>
+              <label style="margin-top:0.35rem">Manual gas cost (optional)</label>
+              <input type="number" id="uber-gas" name="gasCost" step="0.01" min="0" placeholder="0.00">
+            </div>
+            <div class="form-group">
               <label for="uber-personal-miles">Personal Miles</label>
               <input type="number" id="uber-personal-miles-input" name="personalMiles" step="0.1" min="0" placeholder="0.0">
             </div>
-            <div class="form-group"></div>
           </div>
           <div class="form-group">
             <label for="uber-notes">Notes</label>
@@ -244,20 +257,23 @@
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label>Odometer</label>
-                <input type="number" id="uber-edit-odometer" step="0.1">
+                <label>Start Miles</label>
+                <input type="number" id="uber-edit-start" step="0.1">
               </div>
               <div class="form-group">
-                <label>Personal Miles</label>
-                <input type="number" id="uber-edit-personal" step="0.1">
+                <label>End Miles</label>
+                <input type="number" id="uber-edit-odometer" step="0.1">
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
+                <label>Personal Miles</label>
+                <input type="number" id="uber-edit-personal" step="0.1">
+              </div>
+              <div class="form-group">
                 <label>Gas Cost ($)</label>
                 <input type="number" id="uber-edit-gas" step="0.01">
               </div>
-              <div class="form-group"></div>
             </div>
             <div class="form-group">
               <label>Notes</label>

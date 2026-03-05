@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const { initDb } = require('./db');
 const OpenAI = require('openai');
 const { Client } = require('@notionhq/client');
+const exifr = require('exifr');
 
 let db = null;
 const app = express();
@@ -64,44 +65,85 @@ app.get('/api/records', (req, res) => {
 });
 
 // ── API: Create / Update record ─────────────────────────────
+// Helper: extract EXIF date from an image file
+async function getExifDate(filePath) {
+  try {
+    const exif = await exifr.parse(filePath, { pick: ['DateTimeOriginal', 'CreateDate', 'ModifyDate'] });
+    const dt = exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate;
+    if (dt instanceof Date) {
+      return dt.toISOString().split('T')[0]; // YYYY-MM-DD
+    }
+  } catch (e) {
+    console.log('EXIF extraction skipped:', e.message);
+  }
+  return null;
+}
+
+// Helper: extract odometer reading from an image via AI
+async function extractOdometerFromImage(imageFile) {
+  if (!ai) return { reading: null, error: 'AI not configured' };
+  try {
+    const base64 = fs.readFileSync(imageFile.path, 'base64');
+    const resp = await ai.chat.completions.create({
+      model: VISION_MODEL,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${imageFile.mimetype};base64,${base64}` } },
+          { type: 'text', text: 'Identify the main odometer reading (total mileage) from this dashboard image. It is usually the largest integer number. Ignore trip meters. Return ONLY the numeric value.' }
+        ]
+      }]
+    });
+    const text = resp.choices?.[0]?.message?.content?.trim() || '';
+    console.log('Odometer AI response:', text);
+    const match = text.match(/[\d,]+(\.\d+)?/);
+    if (match) return { reading: parseFloat(match[0].replace(/,/g, '')), error: null };
+    return { reading: null, error: `AI returned "${text}"` };
+  } catch (err) {
+    console.error('Odometer extraction error:', err.message);
+    return { reading: null, error: err.message };
+  }
+}
+
 app.post('/api/records',
   upload.fields([
+    { name: 'startOdometerImage', maxCount: 1 },
     { name: 'odometerImage', maxCount: 1 },
     { name: 'gasReceiptImage', maxCount: 1 }
   ]),
   async (req, res) => {
     try {
-      const { date, earnings, gasCost, notes, personalMiles, odometerReading } = req.body;
+      const { date, earnings, gasCost, notes, personalMiles, odometerReading, startMiles } = req.body;
       const files = req.files || {};
+      const startOdometerImage = files['startOdometerImage']?.[0];
       const odometerImage = files['odometerImage']?.[0];
       const gasReceiptImage = files['gasReceiptImage']?.[0];
 
-      let extractedOdometer = null;
+      let extractedStartMiles = null;
+      let extractedEndMiles = null;
       let extractedGasCost = null;
       let extractionError = null;
 
-      // ── Extract odometer from image ───────────────────────
+      // ── Extract EXIF date from photos ─────────────────────
+      let exifDate = null;
+      if (startOdometerImage) exifDate = await getExifDate(startOdometerImage.path);
+      if (!exifDate && odometerImage) exifDate = await getExifDate(odometerImage.path);
+      if (!exifDate && gasReceiptImage) exifDate = await getExifDate(gasReceiptImage.path);
+
+      // ── Extract start odometer from image ─────────────────
+      if (startOdometerImage && ai) {
+        const result = await extractOdometerFromImage(startOdometerImage);
+        if (result.reading !== null) extractedStartMiles = result.reading;
+        else if (result.error) extractionError = `Start odometer: ${result.error}`;
+      }
+
+      // ── Extract end odometer from image ───────────────────
       if (odometerImage && ai) {
-        try {
-          const base64 = fs.readFileSync(odometerImage.path, 'base64');
-          const resp = await ai.chat.completions.create({
-            model: VISION_MODEL,
-            messages: [{
-              role: 'user',
-              content: [
-                { type: 'image_url', image_url: { url: `data:${odometerImage.mimetype};base64,${base64}` } },
-                { type: 'text', text: 'Identify the main odometer reading (total mileage) from this dashboard image. It is usually the largest integer number. Ignore trip meters. Return ONLY the numeric value.' }
-              ]
-            }]
-          });
-          const text = resp.choices?.[0]?.message?.content?.trim() || '';
-          console.log('Odometer AI response:', text);
-          const match = text.match(/[\d,]+(\.\d+)?/);
-          if (match) extractedOdometer = parseFloat(match[0].replace(/,/g, ''));
-          else extractionError = `Odometer extraction failed: AI returned "${text}"`;
-        } catch (err) {
-          console.error('Odometer extraction error:', err.message);
-          extractionError = `Odometer extraction error: ${err.message}`;
+        const result = await extractOdometerFromImage(odometerImage);
+        if (result.reading !== null) extractedEndMiles = result.reading;
+        else if (result.error) {
+          const msg = `End odometer: ${result.error}`;
+          extractionError = extractionError ? extractionError + '; ' + msg : msg;
         }
       }
 
@@ -132,7 +174,6 @@ app.post('/api/records',
               if (data.date) extractedDate = data.date;
             }
           } catch (e) {
-            // Fallback regex
             const amountMatch = text.match(/\$?\s*(\d+\.\d{2})/);
             if (amountMatch) extractedGasCost = parseFloat(amountMatch[1]);
           }
@@ -142,7 +183,7 @@ app.post('/api/records',
       }
 
       // ── Determine final values ────────────────────────────
-      const finalDate = extractedDate || date;
+      const finalDate = extractedDate || exifDate || date;
       let id = req.body.id;
       let existing = null;
 
@@ -157,6 +198,7 @@ app.post('/api/records',
       const hasEarnings = earnings !== undefined && earnings !== '';
       const hasGasCost = gasCost !== undefined && gasCost !== '';
       const hasOdometer = odometerReading !== undefined && odometerReading !== '';
+      const hasStartMiles = startMiles !== undefined && startMiles !== '';
       const hasPersonalMiles = personalMiles !== undefined && personalMiles !== '';
 
       const finalEarnings = hasEarnings ? parseFloat(earnings) : (existing?.earnings || 0);
@@ -166,10 +208,17 @@ app.post('/api/records',
       if (hasGasCost) finalGasCost = parseFloat(gasCost);
       else if (extractedGasCost !== null) finalGasCost = extractedGasCost;
 
+      // Start miles: manual > AI-extracted > existing
+      let finalStartMiles = existing?.start_miles || null;
+      if (hasStartMiles) finalStartMiles = parseFloat(startMiles);
+      else if (extractedStartMiles !== null) finalStartMiles = extractedStartMiles;
+
+      // End miles (odometer_reading): manual > AI-extracted > existing
       let finalOdometer = existing?.odometer_reading || null;
       if (hasOdometer) finalOdometer = parseFloat(odometerReading);
-      else if (extractedOdometer !== null) finalOdometer = extractedOdometer;
+      else if (extractedEndMiles !== null) finalOdometer = extractedEndMiles;
 
+      const startImagePath = startOdometerImage ? `/uploads/${startOdometerImage.filename}` : (existing?.start_image_path || null);
       const odometerImagePath = odometerImage ? `/uploads/${odometerImage.filename}` : (existing?.odometer_image_path || null);
       const gasReceiptImagePath = gasReceiptImage ? `/uploads/${gasReceiptImage.filename}` : (existing?.gas_receipt_image_path || null);
 
@@ -178,13 +227,13 @@ app.post('/api/records',
 
       if (existing) {
         db.prepare(`
-          UPDATE records SET odometer_reading=?, odometer_image_path=?, earnings=?, gas_cost=?, gas_receipt_image_path=?, notes=?, personal_miles=? WHERE id=?
-        `).run(finalOdometer, odometerImagePath, finalEarnings, finalGasCost, gasReceiptImagePath, finalNotes, finalPersonalMiles, id);
+          UPDATE records SET start_miles=?, start_image_path=?, odometer_reading=?, odometer_image_path=?, earnings=?, gas_cost=?, gas_receipt_image_path=?, notes=?, personal_miles=? WHERE id=?
+        `).run(finalStartMiles, startImagePath, finalOdometer, odometerImagePath, finalEarnings, finalGasCost, gasReceiptImagePath, finalNotes, finalPersonalMiles, id);
       } else {
         db.prepare(`
-          INSERT INTO records (id, date, odometer_reading, odometer_image_path, earnings, gas_cost, gas_receipt_image_path, notes, notion_page_id, personal_miles)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, finalDate, finalOdometer, odometerImagePath, finalEarnings, finalGasCost, gasReceiptImagePath, finalNotes, null, finalPersonalMiles);
+          INSERT INTO records (id, date, start_miles, start_image_path, odometer_reading, odometer_image_path, earnings, gas_cost, gas_receipt_image_path, notes, notion_page_id, personal_miles)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, finalDate, finalStartMiles, startImagePath, finalOdometer, odometerImagePath, finalEarnings, finalGasCost, gasReceiptImagePath, finalNotes, null, finalPersonalMiles);
       }
 
       // ── Notion sync ───────────────────────────────────────
@@ -209,15 +258,23 @@ app.post('/api/records',
             }
           }
 
+          const drivenMiles = (finalStartMiles && finalOdometer) ? finalOdometer - finalStartMiles : null;
+
           const properties = {
             'Record': { title: [{ text: { content: `Trip on ${finalDate}` } }] },
             'Date': { date: { start: finalDate } },
-            'Start Miles': { number: finalOdometer },
             'Earnings': { number: finalEarnings },
             'Gas': { number: finalGasCost || 0 },
             'Notes': { rich_text: [{ text: { content: finalNotes || '' } }] },
           };
 
+          if (finalStartMiles !== null) properties['Start Miles'] = { number: finalStartMiles };
+          if (finalOdometer !== null) properties['End Miles'] = { number: finalOdometer };
+          if (drivenMiles !== null) properties['Driven Miles'] = { number: drivenMiles };
+
+          if (startImagePath) {
+            properties['Start Image'] = { url: `${appUrl}${startImagePath}` };
+          }
           if (odometerImagePath) {
             properties['Mileage Image'] = { url: `${appUrl}${odometerImagePath}` };
           }
