@@ -952,6 +952,13 @@ batchOdoBtn.addEventListener('click', async () => {
   const failedExtractions = extractions.filter(e => e.reading === null).length;
 
   await fetchUberRecords();
+
+  // Navigate to the most recent new record's month so user can see results
+  if (dates.length > 0) {
+    const latest = dates[dates.length - 1]; // sorted chronologically, pick latest
+    uberMonth = new Date(latest + 'T00:00:00');
+    uberMonth.setDate(1);
+  }
   renderUber();
 
   let msg = `Done: ${saved} record(s) from ${extractions.length} photos.`;
