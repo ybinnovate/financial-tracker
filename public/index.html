@@ -63,6 +63,20 @@
     <section id="transactions" class="tab-content">
       <div class="form-container">
         <h3>Add Transaction</h3>
+        <div class="form-group" style="margin-bottom:1rem">
+          <label>Scan Receipt (optional)</label>
+          <input type="file" id="tx-receipt-image" accept="image/*" style="display:none">
+          <div class="upload-zone" onclick="document.getElementById('tx-receipt-image').click()">
+            <div class="upload-placeholder" id="tx-receipt-placeholder">
+              <span class="upload-icon">&#128206;</span>
+              <span>Tap to upload a receipt</span>
+              <span class="upload-hint">(AI extracts amount, date &amp; category)</span>
+            </div>
+            <img id="tx-receipt-preview" class="upload-preview" style="display:none" alt="Receipt preview">
+          </div>
+          <button type="button" id="tx-extract-btn" class="btn-primary" style="display:none;margin-top:0.5rem;width:100%">Extract from Receipt</button>
+          <div id="tx-extract-status" style="display:none;text-align:center;padding:0.5rem;font-size:0.85rem;color:var(--accent)"></div>
+        </div>
         <form id="transaction-form">
           <div class="form-row">
             <div class="form-group">

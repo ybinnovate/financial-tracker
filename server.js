@@ -342,6 +342,59 @@ app.delete('/api/records/:id', async (req, res) => {
   }
 });
 
+// ── API: Extract receipt for Transactions tab ───────────────
+app.post('/api/extract-receipt',
+  upload.single('receiptImage'),
+  async (req, res) => {
+    if (!ai) return res.status(400).json({ error: 'AI not configured' });
+    if (!req.file) return res.status(400).json({ error: 'No image provided' });
+
+    try {
+      const base64 = fs.readFileSync(req.file.path, 'base64');
+      const resp = await ai.chat.completions.create({
+        model: VISION_MODEL,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:${req.file.mimetype};base64,${base64}` } },
+            { type: 'text', text: `Analyze this receipt image. Extract:
+1. Store/business name
+2. Total amount paid (number)
+3. Date of purchase (YYYY-MM-DD format)
+4. Best matching expense category from this list: Food & Dining, Transportation, Housing, Utilities, Entertainment, Shopping, Healthcare, Education, Personal Care, Travel, Subscriptions, Other
+
+Return a raw JSON object with keys: "storeName" (string), "amount" (number), "date" (string YYYY-MM-DD), "category" (string from the list above). No markdown, no explanation.` }
+          ]
+        }]
+      });
+
+      let text = resp.choices?.[0]?.message?.content?.trim() || '';
+      console.log('Receipt extract AI response:', text);
+      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const data = JSON.parse(jsonMatch[0]);
+        // Also try EXIF date as fallback
+        if (!data.date) {
+          const exifDate = await getExifDate(req.file.path);
+          if (exifDate) data.date = exifDate;
+        }
+        res.json({ success: true, ...data });
+      } else {
+        res.json({ success: false, error: 'Could not parse receipt data' });
+      }
+
+      // Clean up uploaded file (not stored permanently for transactions)
+      fs.unlink(req.file.path, () => {});
+    } catch (error) {
+      console.error('Receipt extraction error:', error);
+      fs.unlink(req.file.path, () => {});
+      res.status(500).json({ error: 'Failed to extract receipt data' });
+    }
+  }
+);
+
 // ── API: Config status ──────────────────────────────────────
 app.get('/api/config', (req, res) => {
   res.json({

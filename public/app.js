@@ -104,6 +104,62 @@ function populateCategoryDropdowns() {
   budgetCat.innerHTML = EXPENSE_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
 }
 
+// ── Receipt Extraction ──────────────────────────────────────
+const txReceiptInput = document.getElementById('tx-receipt-image');
+const txExtractBtn = document.getElementById('tx-extract-btn');
+const txExtractStatus = document.getElementById('tx-extract-status');
+
+txReceiptInput.addEventListener('change', () => {
+  txExtractBtn.style.display = txReceiptInput.files.length ? 'block' : 'none';
+  txExtractStatus.style.display = 'none';
+});
+
+txExtractBtn.addEventListener('click', async () => {
+  if (!txReceiptInput.files.length) return;
+
+  txExtractBtn.disabled = true;
+  txExtractBtn.textContent = 'Extracting with AI...';
+  txExtractStatus.style.display = 'block';
+  txExtractStatus.textContent = 'Analyzing receipt...';
+
+  const formData = new FormData();
+  formData.append('receiptImage', txReceiptInput.files[0]);
+
+  try {
+    const resp = await fetch('/api/extract-receipt', { method: 'POST', body: formData });
+    const data = await resp.json();
+
+    if (data.success) {
+      // Pre-fill form
+      document.getElementById('tx-type').value = 'expense';
+      document.getElementById('tx-type').dispatchEvent(new Event('change'));
+
+      // Wait a tick for category dropdown to repopulate
+      setTimeout(() => {
+        if (data.amount) document.getElementById('tx-amount').value = data.amount;
+        if (data.date) document.getElementById('tx-date').value = data.date;
+        if (data.storeName) document.getElementById('tx-description').value = data.storeName;
+        if (data.category) {
+          const catSelect = document.getElementById('tx-category');
+          const match = Array.from(catSelect.options).find(o => o.value === data.category);
+          if (match) catSelect.value = data.category;
+        }
+        txExtractStatus.textContent = 'Extracted! Review and submit below.';
+        txExtractStatus.style.color = 'var(--income)';
+      }, 50);
+    } else {
+      txExtractStatus.textContent = data.error || 'Could not extract receipt data.';
+      txExtractStatus.style.color = 'var(--expense)';
+    }
+  } catch (err) {
+    txExtractStatus.textContent = 'Error: ' + err.message;
+    txExtractStatus.style.color = 'var(--expense)';
+  } finally {
+    txExtractBtn.disabled = false;
+    txExtractBtn.textContent = 'Extract from Receipt';
+  }
+});
+
 // ── Transactions ────────────────────────────────────────────
 document.getElementById('transaction-form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -120,6 +176,13 @@ document.getElementById('transaction-form').addEventListener('submit', (e) => {
   e.target.reset();
   document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('tx-type').dispatchEvent(new Event('change'));
+  // Reset receipt upload
+  txReceiptInput.value = '';
+  document.getElementById('tx-receipt-preview').style.display = 'none';
+  document.getElementById('tx-receipt-placeholder').style.display = 'flex';
+  txExtractBtn.style.display = 'none';
+  txExtractStatus.style.display = 'none';
+  txExtractStatus.style.color = 'var(--accent)';
   renderTransactions();
 });
 
@@ -629,6 +692,7 @@ async function init() {
   renderTransactions();
   renderBudgets();
   refreshDashboard();
+  setupImagePreview('tx-receipt-image', 'tx-receipt-preview', 'tx-receipt-placeholder');
   setupImagePreview('uber-start-image', 'start-preview', 'start-placeholder');
   setupImagePreview('uber-odometer-image', 'odometer-preview', 'odometer-placeholder');
   setupImagePreview('uber-receipt-image', 'receipt-preview', 'receipt-placeholder');
