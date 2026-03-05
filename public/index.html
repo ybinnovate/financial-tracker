@@ -178,11 +178,11 @@
           <div class="form-row">
             <div class="form-group">
               <label>Odometer Photo</label>
-              <div class="upload-zone" id="odometer-upload-zone">
-                <input type="file" id="uber-odometer-image" name="odometerImage" accept="image/*" capture="environment">
+              <input type="file" id="uber-odometer-image" name="odometerImage" accept="image/*" style="display:none">
+              <div class="upload-zone" id="odometer-upload-zone" onclick="document.getElementById('uber-odometer-image').click()">
                 <div class="upload-placeholder" id="odometer-placeholder">
                   <span class="upload-icon">&#128247;</span>
-                  <span>Take photo of odometer</span>
+                  <span>Tap to take photo of odometer</span>
                   <span class="upload-hint">(AI will extract mileage)</span>
                 </div>
                 <img id="odometer-preview" class="upload-preview" style="display:none" alt="Odometer preview">
@@ -192,11 +192,11 @@
             </div>
             <div class="form-group">
               <label>Gas Receipt Photo</label>
-              <div class="upload-zone" id="receipt-upload-zone">
-                <input type="file" id="uber-receipt-image" name="gasReceiptImage" accept="image/*" capture="environment">
+              <input type="file" id="uber-receipt-image" name="gasReceiptImage" accept="image/*" style="display:none">
+              <div class="upload-zone" id="receipt-upload-zone" onclick="document.getElementById('uber-receipt-image').click()">
                 <div class="upload-placeholder" id="receipt-placeholder">
                   <span class="upload-icon">&#9981;</span>
-                  <span>Take photo of receipt</span>
+                  <span>Tap to take photo of receipt</span>
                   <span class="upload-hint">(AI will extract cost)</span>
                 </div>
                 <img id="receipt-preview" class="upload-preview" style="display:none" alt="Receipt preview">
