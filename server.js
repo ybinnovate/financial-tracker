@@ -9,6 +9,7 @@ const OpenAI = require('openai');
 const { Client } = require('@notionhq/client');
 const exifr = require('exifr');
 const pdfParse = require('pdf-parse');
+const heicConvert = require('heic-convert');
 
 let db = null;
 const app = express();
@@ -187,10 +188,11 @@ app.post('/api/extract-odometer',
   upload.single('image'),
   async (req, res) => {
     try {
-      const file = req.file;
+      let file = req.file;
       if (!file) return res.status(400).json({ error: 'No image provided' });
 
       const exifDate = await getExifDate(file.path);
+      file = await convertHeicIfNeeded(file);
       let reading = null;
       let error = null;
 
@@ -214,6 +216,29 @@ app.post('/api/extract-odometer',
 );
 
 // ── API: Create / Update record ─────────────────────────────
+// Helper: convert HEIC/HEIF to JPEG (returns same file object with updated path/mimetype if converted)
+async function convertHeicIfNeeded(fileObj) {
+  if (!fileObj) return fileObj;
+  const ext = path.extname(fileObj.originalname || '').toLowerCase();
+  if (ext !== '.heic' && ext !== '.heif') return fileObj;
+  try {
+    console.log('Converting HEIC to JPEG:', fileObj.originalname);
+    const inputBuffer = fs.readFileSync(fileObj.path);
+    const outputBuffer = await heicConvert({ buffer: inputBuffer, format: 'JPEG', quality: 0.92 });
+    const jpegPath = fileObj.path.replace(/\.(heic|heif)$/i, '.jpg');
+    const jpegFilename = fileObj.filename.replace(/\.(heic|heif)$/i, '.jpg');
+    fs.writeFileSync(jpegPath, outputBuffer);
+    // Update file object to point to the converted JPEG
+    fileObj.path = jpegPath;
+    fileObj.filename = jpegFilename;
+    fileObj.mimetype = 'image/jpeg';
+    return fileObj;
+  } catch (e) {
+    console.error('HEIC conversion failed:', e.message);
+    return fileObj; // fallback to original
+  }
+}
+
 // Helper: extract EXIF date from an image file
 async function getExifDate(filePath) {
   try {
@@ -264,20 +289,25 @@ app.post('/api/records',
     try {
       const { date, earnings, gasCost, notes, personalMiles, odometerReading, startMiles, startImageFilename, odometerImageFilename } = req.body;
       const files = req.files || {};
-      const startOdometerImage = files['startOdometerImage']?.[0];
-      const odometerImage = files['odometerImage']?.[0];
-      const gasReceiptImage = files['gasReceiptImage']?.[0];
+      let startOdometerImage = files['startOdometerImage']?.[0];
+      let odometerImage = files['odometerImage']?.[0];
+      let gasReceiptImage = files['gasReceiptImage']?.[0];
 
       let extractedStartMiles = null;
       let extractedEndMiles = null;
       let extractedGasCost = null;
       let extractionError = null;
 
-      // ── Extract EXIF date from photos ─────────────────────
+      // ── Extract EXIF date from photos (before HEIC conversion) ──
       let exifDate = null;
       if (startOdometerImage) exifDate = await getExifDate(startOdometerImage.path);
       if (!exifDate && odometerImage) exifDate = await getExifDate(odometerImage.path);
       if (!exifDate && gasReceiptImage) exifDate = await getExifDate(gasReceiptImage.path);
+
+      // ── Convert HEIC files to JPEG ──────────────────────────
+      startOdometerImage = await convertHeicIfNeeded(startOdometerImage);
+      odometerImage = await convertHeicIfNeeded(odometerImage);
+      gasReceiptImage = await convertHeicIfNeeded(gasReceiptImage);
 
       // ── Extract start odometer from image ─────────────────
       if (startOdometerImage && ai) {
@@ -499,6 +529,7 @@ app.post('/api/extract-receipt',
     if (!req.file) return res.status(400).json({ error: 'No image provided' });
 
     try {
+      await convertHeicIfNeeded(req.file);
       const base64 = fs.readFileSync(req.file.path, 'base64');
       const resp = await ai.chat.completions.create({
         model: VISION_MODEL,
@@ -565,6 +596,7 @@ app.post('/api/extract-statement',
     if (!req.file) return res.status(400).json({ error: 'No file provided' });
 
     try {
+      await convertHeicIfNeeded(req.file);
       const isPdf = req.file.mimetype === 'application/pdf' ||
                      req.file.originalname.toLowerCase().endsWith('.pdf');
       let aiMessages;

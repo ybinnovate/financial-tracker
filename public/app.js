@@ -1,3 +1,10 @@
+// ── Helpers ─────────────────────────────────────────────────
+function isImageFile(file) {
+  if (file.type && isImageFile(file)) return true;
+  const ext = (file.name || '').toLowerCase();
+  return ext.endsWith('.heic') || ext.endsWith('.heif');
+}
+
 // ── Categories ──────────────────────────────────────────────
 const EXPENSE_CATEGORIES = [
   'Food & Dining', 'Transportation', 'Housing', 'Utilities',
@@ -280,7 +287,7 @@ stmtFile.addEventListener('change', () => {
   const file = stmtFile.files[0];
   const preview = document.getElementById('statement-preview');
   const placeholder = document.getElementById('statement-placeholder');
-  if (file && file.type.startsWith('image/')) {
+  if (file && isImageFile(file)) {
     const reader = new FileReader();
     reader.onloadend = () => { preview.src = reader.result; preview.style.display = 'block'; placeholder.style.display = 'none'; };
     reader.readAsDataURL(file);
@@ -767,7 +774,7 @@ function setupImagePreview(inputId, previewId, placeholderId) {
     e.preventDefault();
     zone.classList.remove('drag-over');
     const file = e.dataTransfer.files?.[0];
-    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
+    if (file && (isImageFile(file) || file.type === 'application/pdf')) {
       const dt = new DataTransfer();
       dt.items.add(file);
       input.files = dt.files;
@@ -791,11 +798,11 @@ function setupDropZone(inputId) {
     const droppedFiles = e.dataTransfer.files;
     if (input.multiple) {
       for (const f of droppedFiles) {
-        if (f.type.startsWith('image/') || f.type === 'application/pdf') dt.items.add(f);
+        if (isImageFile(f) || f.type === 'application/pdf') dt.items.add(f);
       }
     } else {
       const f = droppedFiles[0];
-      if (f && (f.type.startsWith('image/') || f.type === 'application/pdf')) dt.items.add(f);
+      if (f && (isImageFile(f) || f.type === 'application/pdf')) dt.items.add(f);
     }
     if (dt.files.length) {
       input.files = dt.files;
@@ -1240,7 +1247,7 @@ ybStmtFile.addEventListener('change', () => {
   const file = ybStmtFile.files[0];
   const preview = document.getElementById('yb-statement-preview');
   const placeholder = document.getElementById('yb-statement-placeholder');
-  if (file && file.type.startsWith('image/')) {
+  if (file && isImageFile(file)) {
     const reader = new FileReader();
     reader.onloadend = () => { preview.src = reader.result; preview.style.display = 'block'; placeholder.style.display = 'none'; };
     reader.readAsDataURL(file);
