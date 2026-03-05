@@ -74,6 +74,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.getElementById(btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'dashboard') refreshDashboard();
     if (btn.dataset.tab === 'uber') refreshUber();
+    if (btn.dataset.tab === 'yb') refreshYB();
     if (btn.dataset.tab === 'tax') refreshTax();
   });
 });
@@ -851,6 +852,180 @@ function renderUber() {
 function refreshUber() { renderUber(); }
 
 // ══════════════════════════════════════════════════════════════
+// ── 易北教育 TAB ────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+const CAPITAL_CATEGORIES = ['Owner Contribution', 'Owner Draw', 'Other'];
+
+let ybMonth = new Date();
+ybMonth.setDate(1);
+
+function updateYbCategories() {
+  const type = document.getElementById('yb-type').value;
+  const catSelect = document.getElementById('yb-category');
+  let cats;
+  if (type === 'income') cats = INCOME_CATEGORIES;
+  else if (type === 'capital') cats = CAPITAL_CATEGORIES;
+  else cats = EXPENSE_CATEGORIES;
+  catSelect.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+document.getElementById('yb-prev-month').addEventListener('click', () => {
+  ybMonth.setMonth(ybMonth.getMonth() - 1);
+  renderYB();
+});
+
+document.getElementById('yb-next-month').addEventListener('click', () => {
+  ybMonth.setMonth(ybMonth.getMonth() + 1);
+  renderYB();
+});
+
+document.getElementById('yb-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const tx = {
+    id: uid(),
+    type: document.getElementById('yb-type').value,
+    amount: parseFloat(document.getElementById('yb-amount').value),
+    category: document.getElementById('yb-category').value,
+    date: document.getElementById('yb-date').value,
+    description: document.getElementById('yb-description').value.trim(),
+    business: '易北教育'
+  };
+
+  try {
+    await fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tx)
+    });
+    await fetchTransactions();
+  } catch (err) {
+    alert('Failed to save: ' + err.message);
+  }
+
+  e.target.reset();
+  document.getElementById('yb-date').value = new Date().toISOString().split('T')[0];
+  updateYbCategories();
+  renderYB();
+  renderTransactions();
+  refreshDashboard();
+});
+
+// YB Statement extraction (reuses server endpoint + review modal)
+const ybStmtFile = document.getElementById('yb-statement-file');
+const ybStmtBtn = document.getElementById('yb-statement-extract-btn');
+const ybStmtStatus = document.getElementById('yb-statement-status');
+
+ybStmtFile.addEventListener('change', () => {
+  ybStmtBtn.style.display = ybStmtFile.files.length ? 'block' : 'none';
+  ybStmtStatus.style.display = 'none';
+  const file = ybStmtFile.files[0];
+  const preview = document.getElementById('yb-statement-preview');
+  const placeholder = document.getElementById('yb-statement-placeholder');
+  if (file && file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onloadend = () => { preview.src = reader.result; preview.style.display = 'block'; placeholder.style.display = 'none'; };
+    reader.readAsDataURL(file);
+  } else if (file) {
+    preview.style.display = 'none';
+    placeholder.innerHTML = '<span class="upload-icon">&#128196;</span><span>' + file.name + '</span><span class="upload-hint">(PDF ready)</span>';
+  }
+});
+
+ybStmtBtn.addEventListener('click', async () => {
+  if (!ybStmtFile.files.length) return;
+  ybStmtBtn.disabled = true;
+  ybStmtBtn.textContent = 'Extracting with AI...';
+  ybStmtStatus.style.display = 'block';
+  ybStmtStatus.textContent = 'Analyzing statement...';
+
+  const formData = new FormData();
+  formData.append('statementFile', ybStmtFile.files[0]);
+
+  try {
+    const resp = await fetch('/api/extract-statement', { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (data.success && data.transactions?.length) {
+      pendingStatementTx = data.transactions;
+      document.getElementById('statement-business').value = '易北教育';
+      showStatementReview();
+      ybStmtStatus.textContent = `Found ${data.transactions.length} transactions.`;
+      ybStmtStatus.style.color = 'var(--income)';
+    } else {
+      ybStmtStatus.textContent = data.error || 'No transactions found.';
+      ybStmtStatus.style.color = 'var(--expense)';
+    }
+  } catch (err) {
+    ybStmtStatus.textContent = 'Error: ' + err.message;
+    ybStmtStatus.style.color = 'var(--expense)';
+  } finally {
+    ybStmtBtn.disabled = false;
+    ybStmtBtn.textContent = 'Extract Transactions';
+  }
+});
+
+function renderYB() {
+  const mk = monthKey(ybMonth);
+  document.getElementById('yb-month-label').textContent = monthLabel(ybMonth);
+
+  const ybTx = transactions.filter(t => t.business === '易北教育' && monthKey(t.date) === mk);
+  const revenue = ybTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expenses = ybTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const capital = ybTx.filter(t => t.type === 'capital').reduce((s, t) => s + t.amount, 0);
+  const net = revenue - expenses;
+
+  document.getElementById('yb-revenue').textContent = fmt(revenue);
+  document.getElementById('yb-expenses').textContent = fmt(expenses);
+  document.getElementById('yb-capital').textContent = fmt(capital);
+  const netEl = document.getElementById('yb-net');
+  netEl.textContent = (net >= 0 ? '' : '-') + fmt(net);
+  netEl.style.color = net >= 0 ? 'var(--income)' : 'var(--expense)';
+
+  // Transaction list
+  const list = document.getElementById('yb-transaction-list');
+  const allYb = transactions.filter(t => t.business === '易北教育').sort((a, b) => b.date.localeCompare(a.date));
+
+  if (allYb.length === 0) {
+    list.innerHTML = '<div class="empty-state">No transactions yet for 易北教育.</div>';
+    return;
+  }
+
+  list.innerHTML = allYb.map(tx => {
+    const icon = tx.type === 'capital' ? '💰' : (CATEGORY_ICONS[tx.category] || '📌');
+    const colorClass = tx.type === 'expense' ? 'expense' : 'income';
+    const sign = tx.type === 'expense' ? '-' : '+';
+    const badgeColor = tx.type === 'capital' ? '#fbbf24' : (tx.type === 'income' ? 'var(--income)' : 'var(--expense)');
+    return `
+    <div class="tx-item">
+      <div class="tx-icon ${colorClass}">${icon}</div>
+      <div class="tx-details">
+        <div class="tx-cat">${tx.category} <span style="font-size:0.6rem;background:${badgeColor};color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px">${tx.type}</span></div>
+        <div class="tx-desc">${tx.description || '—'}</div>
+      </div>
+      <div class="tx-meta">
+        <div class="tx-amount ${colorClass}">${sign}${fmt(tx.amount)}</div>
+        <div class="tx-date">${new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+      </div>
+      <button class="tx-delete" onclick="deleteYbTransaction('${tx.id}')" title="Delete">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+async function deleteYbTransaction(id) {
+  try {
+    await fetch('/api/transactions/' + id, { method: 'DELETE' });
+    await fetchTransactions();
+  } catch (err) {
+    alert('Failed to delete: ' + err.message);
+  }
+  renderYB();
+  renderTransactions();
+  refreshDashboard();
+}
+
+function refreshYB() { renderYB(); }
+
+// ══════════════════════════════════════════════════════════════
 // ── TAX SUMMARY ─────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 
@@ -861,15 +1036,27 @@ const TAX_BRACKETS = [
   [53225, 0.32], [375825, 0.35], [Infinity, 0.37]
 ];
 
-function calcFederalTax(taxableIncome) {
-  let tax = 0, remaining = taxableIncome;
-  for (const [width, rate] of TAX_BRACKETS) {
+// CA state tax brackets (single filer, 2025)
+const CA_TAX_BRACKETS = [
+  [10412, 0.01], [14272, 0.02], [14275, 0.04], [15122, 0.06],
+  [14269, 0.08], [280787, 0.093], [69824, 0.103], [279310, 0.113],
+  [Infinity, 0.123]
+];
+const CA_STD_DEDUCTION = 5540;
+
+function calcBracketTax(income, brackets) {
+  let tax = 0, remaining = income;
+  for (const [width, rate] of brackets) {
     if (remaining <= 0) break;
     const amt = Math.min(remaining, width);
     tax += amt * rate;
     remaining -= amt;
   }
   return tax;
+}
+
+function calcFederalTax(taxableIncome) {
+  return calcBracketTax(taxableIncome, TAX_BRACKETS);
 }
 
 function populateTaxYears() {
@@ -948,7 +1135,14 @@ function refreshTax() {
   const agi = personalIncome + seIncome - seDeduction;
   const taxableIncome = Math.max(0, agi - stdDeduction);
   const fedTax = calcFederalTax(taxableIncome);
-  const totalTax = seTax + fedTax;
+
+  // CA state tax applies only to Uber (CA-sourced) income
+  // CA taxable = Uber net - CA standard deduction (simplified)
+  const caTaxable = Math.max(0, uberNetTaxable - CA_STD_DEDUCTION);
+  const caTax = calcBracketTax(caTaxable, CA_TAX_BRACKETS);
+  // NV has no state income tax (易北教育 registered in NV)
+
+  const totalTax = seTax + fedTax + caTax;
 
   const totalGrossIncome = personalIncome + uberEarnings + ybRevenue;
   const effectiveRate = totalGrossIncome > 0 ? (totalTax / totalGrossIncome * 100).toFixed(1) : '0.0';
@@ -960,6 +1154,7 @@ function refreshTax() {
   document.getElementById('tax-std-ded').textContent = '-' + fmt(stdDeduction);
   document.getElementById('tax-taxable').textContent = fmt(taxableIncome);
   document.getElementById('tax-fed').textContent = fmt(fedTax);
+  document.getElementById('tax-ca').textContent = fmt(caTax);
   document.getElementById('tax-total').textContent = fmt(totalTax);
   document.getElementById('tax-rate').textContent = effectiveRate + '%';
 }
@@ -997,6 +1192,8 @@ function exportTaxSummary() {
     `  Standard Deduction:     ${get('tax-std-ded')}`,
     `  Taxable Income:         ${get('tax-taxable')}`,
     `  Federal Income Tax:     ${get('tax-fed')}`,
+    `  CA State Tax (Uber):    ${get('tax-ca')}`,
+    `  NV State Tax (易北教育): $0.00 (no state tax)`,
     `  Total Estimated Tax:    ${get('tax-total')}`,
     `  Effective Rate:         ${get('tax-rate')}`,
     '',
@@ -1030,6 +1227,9 @@ async function init() {
   setupImagePreview('uber-receipt-image', 'receipt-preview', 'receipt-placeholder');
   await fetchUberRecords();
   renderUber();
+  document.getElementById('yb-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('yb-type').addEventListener('change', updateYbCategories);
+  updateYbCategories();
   populateTaxYears();
   document.getElementById('tax-year').addEventListener('change', refreshTax);
   document.getElementById('tax-export-btn').addEventListener('click', exportTaxSummary);

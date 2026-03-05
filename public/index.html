@@ -15,6 +15,7 @@
       <button class="nav-btn" data-tab="transactions">Transactions</button>
       <button class="nav-btn" data-tab="budgets">Budgets</button>
       <button class="nav-btn" data-tab="uber">Uber</button>
+      <button class="nav-btn" data-tab="yb">易北教育</button>
       <button class="nav-btn" data-tab="tax">Tax</button>
     </nav>
   </header>
@@ -359,6 +360,91 @@
       </div>
     </section>
 
+    <!-- 易北教育 Tab -->
+    <section id="yb" class="tab-content">
+      <div class="uber-stats">
+        <div class="uber-stats-header">
+          <h3>易北教育 Overview</h3>
+          <div class="uber-month-nav">
+            <button id="yb-prev-month">&larr;</button>
+            <span id="yb-month-label"></span>
+            <button id="yb-next-month">&rarr;</button>
+          </div>
+        </div>
+        <div class="uber-stat-cards">
+          <div class="uber-stat earnings">
+            <span class="uber-stat-label">Revenue</span>
+            <span class="uber-stat-value" id="yb-revenue">$0.00</span>
+          </div>
+          <div class="uber-stat expenses">
+            <span class="uber-stat-label">Expenses</span>
+            <span class="uber-stat-value" id="yb-expenses">$0.00</span>
+          </div>
+          <div class="uber-stat mileage">
+            <span class="uber-stat-label">Capital In</span>
+            <span class="uber-stat-value" id="yb-capital">$0.00</span>
+          </div>
+          <div class="uber-stat net">
+            <span class="uber-stat-label">Net P&amp;L</span>
+            <span class="uber-stat-value" id="yb-net">$0.00</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-container">
+        <h3>Add Transaction</h3>
+        <form id="yb-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="yb-type">Type</label>
+              <select id="yb-type" required>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+                <option value="capital">Capital Contribution</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="yb-amount">Amount</label>
+              <input type="number" id="yb-amount" step="0.01" min="0.01" placeholder="0.00" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="yb-category">Category</label>
+              <select id="yb-category" required></select>
+            </div>
+            <div class="form-group">
+              <label for="yb-date">Date</label>
+              <input type="date" id="yb-date" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="yb-description">Description</label>
+            <input type="text" id="yb-description" placeholder="Optional description" maxlength="100">
+          </div>
+          <button type="submit" class="btn-primary">Add Transaction</button>
+        </form>
+      </div>
+
+      <div class="form-container">
+        <h3>Import Statement</h3>
+        <input type="file" id="yb-statement-file" accept="application/pdf,image/*" style="display:none">
+        <div class="upload-zone" onclick="document.getElementById('yb-statement-file').click()">
+          <div class="upload-placeholder" id="yb-statement-placeholder">
+            <span class="upload-icon">&#128196;</span>
+            <span>Upload PDF or photo of statement</span>
+            <span class="upload-hint">(AI extracts all line items for 易北教育)</span>
+          </div>
+          <img id="yb-statement-preview" class="upload-preview" style="display:none" alt="Statement preview">
+        </div>
+        <button type="button" id="yb-statement-extract-btn" class="btn-primary" style="display:none;margin-top:0.5rem;width:100%">Extract Transactions</button>
+        <div id="yb-statement-status" style="display:none;text-align:center;padding:0.5rem;font-size:0.85rem;color:var(--accent)"></div>
+      </div>
+
+      <h3 class="uber-section-title">Transactions</h3>
+      <div id="yb-transaction-list" class="transaction-list"></div>
+    </section>
+
     <!-- Tax Summary Tab -->
     <section id="tax" class="tab-content">
       <div class="tax-header">
@@ -410,6 +496,8 @@
             <div class="tax-row green"><span>Standard Deduction</span><span id="tax-std-ded">-$0.00</span></div>
             <div class="tax-row"><span>Taxable Income</span><span id="tax-taxable">$0.00</span></div>
             <div class="tax-row red"><span>Federal Income Tax</span><span id="tax-fed">$0.00</span></div>
+            <div class="tax-row red"><span>CA State Tax (Uber income)</span><span id="tax-ca">$0.00</span></div>
+            <div class="tax-row sub"><span>NV State Tax (易北教育)</span><span>$0.00 (no state tax)</span></div>
             <div class="tax-row total"><span>Total Estimated Tax</span><span id="tax-total">$0.00</span></div>
             <div class="tax-row total"><span>Effective Rate</span><span id="tax-rate">0%</span></div>
           </div>

@@ -51,6 +51,7 @@ nav {
   background: var(--bg);
   border-radius: var(--radius);
   padding: 3px;
+  overflow-x: auto;
 }
 
 .nav-btn {
@@ -63,6 +64,8 @@ nav {
   font-size: 0.9rem;
   font-weight: 500;
   transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-btn:hover {
