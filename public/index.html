@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financial Tracker</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Financial Tracker</h1>
+    <nav>
+      <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="nav-btn" data-tab="transactions">Transactions</button>
+      <button class="nav-btn" data-tab="budgets">Budgets</button>
+      <button class="nav-btn" data-tab="uber">Uber</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Dashboard Tab -->
+    <section id="dashboard" class="tab-content active">
+      <div class="summary-cards">
+        <div class="card card-income">
+          <h3>Income</h3>
+          <p id="total-income">$0.00</p>
+        </div>
+        <div class="card card-expense">
+          <h3>Expenses</h3>
+          <p id="total-expenses">$0.00</p>
+        </div>
+        <div class="card card-balance">
+          <h3>Balance</h3>
+          <p id="total-balance">$0.00</p>
+        </div>
+      </div>
+
+      <div class="month-selector">
+        <button id="prev-month">&larr;</button>
+        <span id="current-month-label"></span>
+        <button id="next-month">&rarr;</button>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-container">
+          <h3>Expenses by Category</h3>
+          <canvas id="category-chart"></canvas>
+        </div>
+        <div class="chart-container">
+          <h3>Income vs Expenses (6 Months)</h3>
+          <canvas id="monthly-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="budget-overview">
+        <h3>Budget Progress</h3>
+        <div id="budget-progress-bars"></div>
+      </div>
+    </section>
+
+    <!-- Transactions Tab -->
+    <section id="transactions" class="tab-content">
+      <div class="form-container">
+        <h3>Add Transaction</h3>
+        <form id="transaction-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="tx-type">Type</label>
+              <select id="tx-type" required>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="tx-amount">Amount</label>
+              <input type="number" id="tx-amount" step="0.01" min="0.01" placeholder="0.00" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="tx-category">Category</label>
+              <select id="tx-category" required></select>
+            </div>
+            <div class="form-group">
+              <label for="tx-date">Date</label>
+              <input type="date" id="tx-date" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="tx-description">Description</label>
+            <input type="text" id="tx-description" placeholder="Optional description" maxlength="100">
+          </div>
+          <button type="submit" class="btn-primary">Add Transaction</button>
+        </form>
+      </div>
+
+      <div class="transaction-filters">
+        <select id="filter-type">
+          <option value="all">All Types</option>
+          <option value="income">Income</option>
+          <option value="expense">Expense</option>
+        </select>
+        <select id="filter-category">
+          <option value="all">All Categories</option>
+        </select>
+      </div>
+
+      <div id="transaction-list" class="transaction-list"></div>
+    </section>
+
+    <!-- Budgets Tab -->
+    <section id="budgets" class="tab-content">
+      <div class="form-container">
+        <h3>Set Monthly Budget</h3>
+        <form id="budget-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="budget-category">Category</label>
+              <select id="budget-category" required></select>
+            </div>
+            <div class="form-group">
+              <label for="budget-amount">Monthly Limit</label>
+              <input type="number" id="budget-amount" step="0.01" min="0.01" placeholder="0.00" required>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">Set Budget</button>
+        </form>
+      </div>
+
+      <div id="budget-list" class="budget-list"></div>
+    </section>
+    <!-- Uber Tracker Tab -->
+    <section id="uber" class="tab-content">
+      <div class="uber-stats">
+        <div class="uber-stats-header">
+          <h3>Monthly Overview</h3>
+          <div class="uber-month-nav">
+            <button id="uber-prev-month">&larr;</button>
+            <span id="uber-month-label"></span>
+            <button id="uber-next-month">&rarr;</button>
+          </div>
+        </div>
+        <div class="uber-stat-cards">
+          <div class="uber-stat earnings">
+            <span class="uber-stat-label">Earnings</span>
+            <span class="uber-stat-value" id="uber-total-earnings">$0.00</span>
+          </div>
+          <div class="uber-stat expenses">
+            <span class="uber-stat-label">Gas Costs</span>
+            <span class="uber-stat-value" id="uber-total-gas">$0.00</span>
+          </div>
+          <div class="uber-stat mileage">
+            <span class="uber-stat-label">Est. Miles</span>
+            <span class="uber-stat-value" id="uber-total-miles">0.0</span>
+            <span class="uber-stat-sub" id="uber-personal-miles">Personal: 0.0</span>
+          </div>
+          <div class="uber-stat net">
+            <span class="uber-stat-label">Net Profit</span>
+            <span class="uber-stat-value" id="uber-net-profit">$0.00</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-container">
+        <h3>New Daily Record</h3>
+        <form id="uber-form" enctype="multipart/form-data">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="uber-date">Date</label>
+              <input type="date" id="uber-date" name="date" required>
+            </div>
+            <div class="form-group">
+              <label for="uber-earnings">Daily Earnings ($)</label>
+              <input type="number" id="uber-earnings" name="earnings" step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Odometer Photo</label>
+              <div class="upload-zone" id="odometer-upload-zone">
+                <input type="file" id="uber-odometer-image" name="odometerImage" accept="image/*" capture="environment">
+                <div class="upload-placeholder" id="odometer-placeholder">
+                  <span class="upload-icon">&#128247;</span>
+                  <span>Take photo of odometer</span>
+                  <span class="upload-hint">(AI will extract mileage)</span>
+                </div>
+                <img id="odometer-preview" class="upload-preview" style="display:none" alt="Odometer preview">
+              </div>
+              <label style="margin-top:0.35rem">Manual entry (optional)</label>
+              <input type="number" id="uber-odometer" name="odometerReading" step="0.1" placeholder="e.g. 45230.5">
+            </div>
+            <div class="form-group">
+              <label>Gas Receipt Photo</label>
+              <div class="upload-zone" id="receipt-upload-zone">
+                <input type="file" id="uber-receipt-image" name="gasReceiptImage" accept="image/*" capture="environment">
+                <div class="upload-placeholder" id="receipt-placeholder">
+                  <span class="upload-icon">&#9981;</span>
+                  <span>Take photo of receipt</span>
+                  <span class="upload-hint">(AI will extract cost)</span>
+                </div>
+                <img id="receipt-preview" class="upload-preview" style="display:none" alt="Receipt preview">
+              </div>
+              <label style="margin-top:0.35rem">Manual entry (optional)</label>
+              <input type="number" id="uber-gas" name="gasCost" step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="uber-personal-miles">Personal Miles</label>
+              <input type="number" id="uber-personal-miles-input" name="personalMiles" step="0.1" min="0" placeholder="0.0">
+            </div>
+            <div class="form-group"></div>
+          </div>
+          <div class="form-group">
+            <label for="uber-notes">Notes</label>
+            <textarea id="uber-notes" name="notes" rows="2" placeholder="Any additional details..." style="resize:none"></textarea>
+          </div>
+          <button type="submit" class="btn-primary" id="uber-submit-btn">Save Record</button>
+        </form>
+      </div>
+
+      <h3 class="uber-section-title">Recent Activity</h3>
+      <div id="uber-record-list" class="uber-record-list"></div>
+
+      <!-- Edit Modal -->
+      <div id="uber-edit-modal" class="uber-modal" style="display:none">
+        <div class="uber-modal-content">
+          <div class="uber-modal-header">
+            <h3>Edit Record</h3>
+            <button id="uber-edit-close" class="tx-delete">&times;</button>
+          </div>
+          <form id="uber-edit-form">
+            <input type="hidden" id="uber-edit-id">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Date</label>
+                <input type="date" id="uber-edit-date" required>
+              </div>
+              <div class="form-group">
+                <label>Earnings ($)</label>
+                <input type="number" id="uber-edit-earnings" step="0.01">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Odometer</label>
+                <input type="number" id="uber-edit-odometer" step="0.1">
+              </div>
+              <div class="form-group">
+                <label>Personal Miles</label>
+                <input type="number" id="uber-edit-personal" step="0.1">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Gas Cost ($)</label>
+                <input type="number" id="uber-edit-gas" step="0.01">
+              </div>
+              <div class="form-group"></div>
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea id="uber-edit-notes" rows="2" style="resize:none"></textarea>
+            </div>
+            <div class="uber-modal-actions">
+              <button type="button" id="uber-edit-cancel" class="btn-secondary">Cancel</button>
+              <button type="submit" class="btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
