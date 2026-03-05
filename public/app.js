@@ -91,9 +91,10 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'dashboard') refreshDashboard();
-    if (btn.dataset.tab === 'uber') refreshUber();
-    if (btn.dataset.tab === 'yb') refreshYB();
+    if (btn.dataset.tab === 'dashboard') { fetchTransactions().then(() => { fetchUberRecords().then(refreshDashboard); }); }
+    if (btn.dataset.tab === 'transactions') { fetchTransactions().then(renderTransactions); }
+    if (btn.dataset.tab === 'uber') { fetchUberRecords().then(refreshUber); }
+    if (btn.dataset.tab === 'yb') { fetchTransactions().then(refreshYB); }
     if (btn.dataset.tab === 'tax') refreshTax();
     if (btn.dataset.tab === 'receipts') refreshReceipts();
     if (btn.dataset.tab === 'bills') refreshBills();
