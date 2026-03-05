@@ -202,7 +202,23 @@ app.post('/api/records',
       const hasPersonalMiles = personalMiles !== undefined && personalMiles !== '';
 
       const finalEarnings = hasEarnings ? parseFloat(earnings) : (existing?.earnings || 0);
-      const finalPersonalMiles = hasPersonalMiles ? parseFloat(personalMiles) : (existing?.personal_miles || 0);
+
+      // Auto-calculate personal miles: gap between previous record's end miles and this record's start miles
+      let finalPersonalMiles = existing?.personal_miles || 0;
+      if (hasPersonalMiles) {
+        finalPersonalMiles = parseFloat(personalMiles);
+      } else {
+        // Determine start miles for this record (manual > AI > existing)
+        const thisStart = hasStartMiles ? parseFloat(startMiles) : (extractedStartMiles !== null ? extractedStartMiles : (existing?.start_miles || null));
+        if (thisStart !== null) {
+          // Find the most recent previous record with end miles (odometer_reading)
+          const prev = db.prepare('SELECT odometer_reading FROM records WHERE date < ? AND odometer_reading IS NOT NULL ORDER BY date DESC LIMIT 1').get(finalDate);
+          if (prev && prev.odometer_reading) {
+            const gap = thisStart - prev.odometer_reading;
+            if (gap > 0) finalPersonalMiles = gap;
+          }
+        }
+      }
 
       let finalGasCost = existing?.gas_cost || 0;
       if (hasGasCost) finalGasCost = parseFloat(gasCost);
