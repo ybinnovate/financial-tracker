@@ -402,7 +402,7 @@ app.post('/api/records',
 
           if (finalStartMiles !== null) properties['Start Miles'] = { number: finalStartMiles };
           if (finalOdometer !== null) properties['End Miles'] = { number: finalOdometer };
-          if (drivenMiles !== null) properties['Driven Miles'] = { number: drivenMiles };
+          // Driven Miles is calculated (End - Start), skip syncing to avoid Notion property errors
 
           if (startImagePath) {
             properties['Start Image'] = { url: `${appUrl}${startImagePath}` };
