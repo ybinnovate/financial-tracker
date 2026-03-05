@@ -46,7 +46,10 @@ function saveBudgets() {
 async function fetchTransactions() {
   try {
     const resp = await fetch('/api/transactions');
-    if (resp.ok) transactions = await resp.json();
+    if (resp.ok) {
+      transactions = await resp.json();
+      populateYearFilter();
+    }
   } catch (e) {
     console.error('Failed to fetch transactions:', e);
   }
@@ -450,13 +453,27 @@ async function deleteTransaction(id) {
   refreshDashboard();
 }
 
+function populateYearFilter() {
+  const years = new Set();
+  transactions.forEach(t => years.add(new Date(t.date + 'T00:00:00').getFullYear()));
+  uberRecords.forEach(r => years.add(new Date(r.date + 'T00:00:00').getFullYear()));
+  const sorted = [...years].sort((a, b) => b - a);
+  const select = document.getElementById('filter-year');
+  const current = select.value;
+  select.innerHTML = '<option value="all">All Years</option>' +
+    sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (current !== 'all') select.value = current;
+}
+
 function renderTransactions() {
   const list = document.getElementById('transaction-list');
+  const filterYear = document.getElementById('filter-year').value;
   const filterType = document.getElementById('filter-type').value;
   const filterCat = document.getElementById('filter-category').value;
   const filterBiz = document.getElementById('filter-business').value;
 
   let filtered = [...transactions].sort((a, b) => b.date.localeCompare(a.date));
+  if (filterYear !== 'all') filtered = filtered.filter(t => new Date(t.date + 'T00:00:00').getFullYear() === parseInt(filterYear));
   if (filterType !== 'all') filtered = filtered.filter(t => t.type === filterType);
   if (filterCat !== 'all') filtered = filtered.filter(t => t.category === filterCat);
   if (filterBiz !== 'all') filtered = filtered.filter(t => (t.business || '') === filterBiz);
@@ -477,13 +494,14 @@ function renderTransactions() {
       </div>
       <div class="tx-meta">
         <div class="tx-amount ${tx.type}">${tx.type === 'income' ? '+' : '-'}${fmt(tx.amount)}</div>
-        <div class="tx-date">${new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+        <div class="tx-date">${new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', filterYear === 'all' ? { year: 'numeric', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' })}</div>
       </div>
       <button class="tx-delete" onclick="deleteTransaction('${tx.id}')" title="Delete">&times;</button>
     </div>`;
   }).join('');
 }
 
+document.getElementById('filter-year').addEventListener('change', renderTransactions);
 document.getElementById('filter-type').addEventListener('change', renderTransactions);
 document.getElementById('filter-category').addEventListener('change', renderTransactions);
 document.getElementById('filter-business').addEventListener('change', renderTransactions);
@@ -1071,12 +1089,12 @@ function renderUber() {
   document.getElementById('uber-personal-miles').textContent = 'Personal: ' + totalPersonal.toFixed(1);
   document.getElementById('uber-net-profit').textContent = '$' + net.toFixed(2);
 
-  // Record list
+  // Record list (filtered by selected month)
   const list = document.getElementById('uber-record-list');
-  const sorted = [...uberRecords].sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = monthRecords.sort((a, b) => b.date.localeCompare(a.date));
 
   if (sorted.length === 0) {
-    list.innerHTML = '<div class="empty-state">No records yet. Add your first trip above!</div>';
+    list.innerHTML = '<div class="empty-state">No records for this month. Use the arrows to navigate.</div>';
     return;
   }
 
@@ -1329,12 +1347,61 @@ function refreshYB() { renderYB(); }
 // ── TAX SUMMARY ─────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 
-const IRS_MILEAGE_RATES = { 2023: 0.655, 2024: 0.67, 2025: 0.70, 2026: 0.70 };
-const STANDARD_DEDUCTIONS = { 2023: 13850, 2024: 14600, 2025: 15000, 2026: 15000 };
-const TAX_BRACKETS = [
-  [11925, 0.10], [36550, 0.12], [54875, 0.22], [93950, 0.24],
-  [53225, 0.32], [375825, 0.35], [Infinity, 0.37]
-];
+// ── Year-Specific Tax Tables ─────────────────────────────────
+// IRS standard mileage rates
+// Note: 2022 had a mid-year increase (58.5¢ Jan-Jun, 62.5¢ Jul-Dec)
+const IRS_MILEAGE_RATES = { 2022: { h1: 0.585, h2: 0.625 }, 2023: 0.655, 2024: 0.67, 2025: 0.70, 2026: 0.70 };
+
+function getMileageDeduction(year, records) {
+  const rate = IRS_MILEAGE_RATES[year];
+  if (!rate) return { deduction: 0, miles: 0, rateLabel: '$0.70/mi' };
+  let miles = 0, deduction = 0;
+  records.forEach(r => {
+    if (r.start_miles && r.odometer_reading) {
+      const driven = r.odometer_reading - r.start_miles;
+      miles += driven;
+      if (typeof rate === 'object') {
+        // Split-year rate (2022): Jan-Jun vs Jul-Dec
+        const m = new Date(r.date + 'T00:00:00').getMonth();
+        deduction += driven * (m < 6 ? rate.h1 : rate.h2);
+      } else {
+        deduction += driven * rate;
+      }
+    }
+  });
+  const rateLabel = typeof rate === 'object' ? `$${rate.h1}/$${rate.h2}/mi` : `$${rate.toFixed(2)}/mi`;
+  return { deduction, miles, rateLabel };
+}
+
+// Standard deductions (single filer)
+const STANDARD_DEDUCTIONS = { 2022: 12950, 2023: 13850, 2024: 14600, 2025: 15000, 2026: 15000 };
+
+// Federal tax brackets by year (single filer) — bracket widths
+const FED_TAX_BRACKETS = {
+  2022: [
+    [10275, 0.10], [31500, 0.12], [47300, 0.22], [80975, 0.24],
+    [45900, 0.32], [323950, 0.35], [Infinity, 0.37]
+  ],
+  2023: [
+    [11000, 0.10], [33725, 0.12], [50650, 0.22], [86725, 0.24],
+    [49150, 0.32], [346875, 0.35], [Infinity, 0.37]
+  ],
+  2024: [
+    [11600, 0.10], [35550, 0.12], [53375, 0.22], [91425, 0.24],
+    [51775, 0.32], [365625, 0.35], [Infinity, 0.37]
+  ],
+  2025: [
+    [11925, 0.10], [36550, 0.12], [54875, 0.22], [93950, 0.24],
+    [53225, 0.32], [375825, 0.35], [Infinity, 0.37]
+  ]
+};
+
+// Social Security wage base (for SE tax cap)
+const SS_WAGE_BASE = { 2022: 147000, 2023: 160200, 2024: 168600, 2025: 176100, 2026: 176100 };
+
+// QBI deduction (20% of qualified business income, phases out above threshold)
+const QBI_THRESHOLDS = { 2022: 170050, 2023: 182100, 2024: 191950, 2025: 197300, 2026: 197300 };
+const QBI_PHASE_RANGE = 50000; // single filer phase-out range
 
 // CA state tax brackets (single filer, 2025)
 const CA_TAX_BRACKETS = [
@@ -1343,6 +1410,9 @@ const CA_TAX_BRACKETS = [
   [Infinity, 0.123]
 ];
 const CA_STD_DEDUCTION = 5540;
+
+// State residency: NV until March 2025, CA from April 2025
+const CA_RESIDENT_FROM = '2025-04';
 
 function calcBracketTax(income, brackets) {
   let tax = 0, remaining = income;
@@ -1355,8 +1425,30 @@ function calcBracketTax(income, brackets) {
   return tax;
 }
 
-function calcFederalTax(taxableIncome) {
-  return calcBracketTax(taxableIncome, TAX_BRACKETS);
+function calcFederalTax(taxableIncome, year) {
+  const brackets = FED_TAX_BRACKETS[year] || FED_TAX_BRACKETS[2025];
+  return calcBracketTax(taxableIncome, brackets);
+}
+
+function calcSETax(seIncome, year) {
+  const base = seIncome * 0.9235;
+  const ssBase = SS_WAGE_BASE[year] || 176100;
+  // Social Security: 12.4% up to wage base cap
+  const ssTax = Math.min(base, ssBase) * 0.124;
+  // Medicare: 2.9% on all, plus 0.9% additional over $200k
+  const medicareTax = base * 0.029 + Math.max(0, base - 200000) * 0.009;
+  return { seTax: ssTax + medicareTax, seDeduction: (ssTax + medicareTax) / 2 };
+}
+
+function calcQBI(seIncome, taxableIncomeBeforeQBI, year) {
+  const threshold = QBI_THRESHOLDS[year] || 197300;
+  if (seIncome <= 0) return 0;
+  const qbi20 = seIncome * 0.20;
+  if (taxableIncomeBeforeQBI <= threshold) return qbi20;
+  // Phase-out for single filer
+  const over = taxableIncomeBeforeQBI - threshold;
+  if (over >= QBI_PHASE_RANGE) return 0;
+  return qbi20 * (1 - over / QBI_PHASE_RANGE);
 }
 
 function populateTaxYears() {
@@ -1370,38 +1462,27 @@ function populateTaxYears() {
 
 function refreshTax() {
   const year = parseInt(document.getElementById('tax-year').value);
-  const mileageRate = IRS_MILEAGE_RATES[year] || 0.70;
   const stdDeduction = STANDARD_DEDUCTIONS[year] || 15000;
 
-  document.getElementById('tax-mileage-rate').textContent = '$' + mileageRate.toFixed(2);
-  document.getElementById('tax-std-ded-label').textContent = fmt(stdDeduction);
-
-  // === UBER ===
+  // === UBER (Schedule C) ===
   const yearRecords = uberRecords.filter(r => new Date(r.date + 'T00:00:00').getFullYear() === year);
   const uberEarnings = yearRecords.reduce((s, r) => s + (r.earnings || 0), 0);
   const uberGas = yearRecords.reduce((s, r) => s + (r.gas_cost || 0), 0);
-
-  // Uber-tagged transactions (tolls, parking, car wash, tickets, etc.)
   const uberTx = transactions.filter(t => t.business === 'Uber' && new Date(t.date + 'T00:00:00').getFullYear() === year);
   const uberTxExpenses = uberTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
-  let businessMiles = 0;
-  yearRecords.forEach(r => {
-    if (r.start_miles && r.odometer_reading) {
-      businessMiles += r.odometer_reading - r.start_miles;
-    }
-  });
-
-  const mileageDed = businessMiles * mileageRate;
+  // Mileage deduction with year-specific rate (handles 2022 split)
+  const { deduction: mileageDed, miles: businessMiles, rateLabel } = getMileageDeduction(year, yearRecords);
   const uberNetTaxable = Math.max(0, uberEarnings - mileageDed);
 
+  document.getElementById('tax-mileage-rate').textContent = rateLabel;
   document.getElementById('tax-uber-earnings').textContent = fmt(uberEarnings);
   document.getElementById('tax-uber-biz-miles').textContent = businessMiles.toFixed(1) + ' mi';
   document.getElementById('tax-uber-mileage-ded').textContent = '-' + fmt(mileageDed);
   document.getElementById('tax-uber-gas').textContent = fmt(uberGas + uberTxExpenses);
   document.getElementById('tax-uber-net').textContent = fmt(uberNetTaxable);
 
-  // === 易北教育 ===
+  // === 易北教育 (Schedule C) ===
   const ybTx = transactions.filter(t => t.business === '易北教育' && new Date(t.date + 'T00:00:00').getFullYear() === year);
   const ybRevenue = ybTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const ybExpenses = ybTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
@@ -1411,7 +1492,6 @@ function refreshTax() {
   document.getElementById('tax-yb-expenses').textContent = '-' + fmt(ybExpenses);
   document.getElementById('tax-yb-net').textContent = fmt(ybNet);
 
-  // Expense breakdown by category
   const ybByCategory = {};
   ybTx.filter(t => t.type === 'expense').forEach(t => {
     ybByCategory[t.category] = (ybByCategory[t.category] || 0) + t.amount;
@@ -1430,37 +1510,63 @@ function refreshTax() {
   document.getElementById('tax-personal-expenses').textContent = '-' + fmt(personalExpenses);
   document.getElementById('tax-personal-net').textContent = fmt(personalIncome - personalExpenses);
 
-  // === Tax Estimates ===
+  // === Self-Employment Tax (with SS wage base cap) ===
   const seIncome = Math.max(0, uberNetTaxable) + Math.max(0, ybNet);
-  const seTaxBase = seIncome * 0.9235;
-  const seTax = seTaxBase * 0.153;
-  const seDeduction = seTax / 2;
+  const { seTax, seDeduction } = calcSETax(seIncome, year);
 
-  const agi = personalIncome + seIncome - seDeduction;
-  const taxableIncome = Math.max(0, agi - stdDeduction);
-  const fedTax = calcFederalTax(taxableIncome);
+  // === QBI Deduction (20% of qualified business income) ===
+  const agiBeforeQBI = personalIncome + seIncome - seDeduction;
+  const taxableBeforeQBI = Math.max(0, agiBeforeQBI - stdDeduction);
+  const qbiDeduction = calcQBI(seIncome, taxableBeforeQBI, year);
 
-  // CA state tax applies only to Uber (CA-sourced) income
-  // CA taxable = Uber net - CA standard deduction (simplified)
-  const caTaxable = Math.max(0, uberNetTaxable - CA_STD_DEDUCTION);
-  const caTax = calcBracketTax(caTaxable, CA_TAX_BRACKETS);
-  // NV has no state income tax (易北教育 registered in NV)
+  // === Federal Tax ===
+  const agi = agiBeforeQBI;
+  const taxableIncome = Math.max(0, agi - stdDeduction - qbiDeduction);
+  const fedTax = calcFederalTax(taxableIncome, year);
 
+  // === State Tax ===
+  // NV resident 2022-2024 (no state tax). CA resident from April 2025.
+  const yearStr = String(year);
+  const isCAResident = yearStr > CA_RESIDENT_FROM.slice(0, 4) ||
+    (yearStr === CA_RESIDENT_FROM.slice(0, 4));
+
+  let caTax = 0;
+  let stateLabel = 'NV — No State Income Tax';
+  if (isCAResident) {
+    // From April 2025: CA tax on all income earned while CA resident
+    // For 2025: only income from April onward is CA-sourced
+    // Simplified: prorate by months of CA residency (9 months in 2025)
+    const caMonths = year === 2025 ? 9 : 12;
+    const caFraction = caMonths / 12;
+    const caTaxable = Math.max(0, (agi * caFraction) - CA_STD_DEDUCTION);
+    caTax = calcBracketTax(caTaxable, CA_TAX_BRACKETS);
+    stateLabel = year === 2025
+      ? `CA State Tax (Apr-Dec, ${caMonths} mo prorated)`
+      : 'CA State Tax';
+  }
+
+  // === Totals ===
   const totalTax = seTax + fedTax + caTax;
-
   const totalGrossIncome = personalIncome + uberEarnings + ybRevenue;
   const effectiveRate = totalGrossIncome > 0 ? (totalTax / totalGrossIncome * 100).toFixed(1) : '0.0';
 
   document.getElementById('tax-se-income').textContent = fmt(seIncome);
   document.getElementById('tax-se-tax').textContent = fmt(seTax);
   document.getElementById('tax-se-ded').textContent = '-' + fmt(seDeduction);
+  document.getElementById('tax-qbi-ded').textContent = '-' + fmt(qbiDeduction);
   document.getElementById('tax-agi').textContent = fmt(agi);
   document.getElementById('tax-std-ded').textContent = '-' + fmt(stdDeduction);
   document.getElementById('tax-taxable').textContent = fmt(taxableIncome);
   document.getElementById('tax-fed').textContent = fmt(fedTax);
-  document.getElementById('tax-ca').textContent = fmt(caTax);
+  document.getElementById('tax-state-label').textContent = stateLabel;
+  document.getElementById('tax-state').textContent = fmt(caTax);
   document.getElementById('tax-total').textContent = fmt(totalTax);
   document.getElementById('tax-rate').textContent = effectiveRate + '%';
+  document.getElementById('tax-std-ded-label').textContent = fmt(stdDeduction);
+
+  // Show SS wage base info
+  const ssBase = SS_WAGE_BASE[year] || 176100;
+  document.getElementById('tax-ss-base').textContent = '$' + ssBase.toLocaleString();
 }
 
 function exportTaxSummary() {
@@ -1474,6 +1580,7 @@ function exportTaxSummary() {
     'UBER / RIDESHARE (Schedule C)',
     `  Gross Earnings:         ${get('tax-uber-earnings')}`,
     `  Business Miles:         ${get('tax-uber-biz-miles')}`,
+    `  Mileage Rate:           ${get('tax-mileage-rate')}`,
     `  Mileage Deduction:      ${get('tax-uber-mileage-ded')}`,
     `  Actual Gas Costs:       ${get('tax-uber-gas')}`,
     `  Net Taxable:            ${get('tax-uber-net')}`,
@@ -1490,17 +1597,18 @@ function exportTaxSummary() {
     '',
     'ESTIMATED TAX LIABILITY',
     `  Self-Employment Income: ${get('tax-se-income')}`,
-    `  SE Tax (15.3%):         ${get('tax-se-tax')}`,
+    `  SE Tax (SS base ${get('tax-ss-base')}): ${get('tax-se-tax')}`,
     `  1/2 SE Tax Deduction:   ${get('tax-se-ded')}`,
+    `  QBI Deduction (20%):    ${get('tax-qbi-ded')}`,
     `  AGI:                    ${get('tax-agi')}`,
     `  Standard Deduction:     ${get('tax-std-ded')}`,
     `  Taxable Income:         ${get('tax-taxable')}`,
     `  Federal Income Tax:     ${get('tax-fed')}`,
-    `  CA State Tax (Uber):    ${get('tax-ca')}`,
-    `  NV State Tax (易北教育): $0.00 (no state tax)`,
+    `  ${get('tax-state-label')}: ${get('tax-state')}`,
     `  Total Estimated Tax:    ${get('tax-total')}`,
     `  Effective Rate:         ${get('tax-rate')}`,
     '',
+    `State Residency: NV (2022-Mar 2025), CA (Apr 2025+)`,
     'Note: These are estimates. Consult a tax professional.',
     `Generated: ${new Date().toLocaleDateString()}`
   ];

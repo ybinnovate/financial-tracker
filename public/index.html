@@ -199,6 +199,9 @@
       </div>
 
       <div class="transaction-filters">
+        <select id="filter-year">
+          <option value="all">All Years</option>
+        </select>
         <select id="filter-type">
           <option value="all">All Types</option>
           <option value="income">Income</option>
@@ -542,20 +545,22 @@
           <h4>Estimated Tax Liability</h4>
           <div class="tax-rows">
             <div class="tax-row"><span>Total Self-Employment Income</span><span id="tax-se-income">$0.00</span></div>
-            <div class="tax-row red"><span>Self-Employment Tax (15.3%)</span><span id="tax-se-tax">$0.00</span></div>
+            <div class="tax-row red"><span>SE Tax (SS base: <span id="tax-ss-base">$176,100</span>)</span><span id="tax-se-tax">$0.00</span></div>
             <div class="tax-row green"><span>1/2 SE Tax Deduction</span><span id="tax-se-ded">-$0.00</span></div>
+            <div class="tax-row green"><span>QBI Deduction (up to 20%)</span><span id="tax-qbi-ded">-$0.00</span></div>
             <div class="tax-row"><span>Adjusted Gross Income</span><span id="tax-agi">$0.00</span></div>
             <div class="tax-row green"><span>Standard Deduction</span><span id="tax-std-ded">-$0.00</span></div>
             <div class="tax-row"><span>Taxable Income</span><span id="tax-taxable">$0.00</span></div>
             <div class="tax-row red"><span>Federal Income Tax</span><span id="tax-fed">$0.00</span></div>
-            <div class="tax-row red"><span>CA State Tax (Uber income)</span><span id="tax-ca">$0.00</span></div>
-            <div class="tax-row sub"><span>NV State Tax (易北教育)</span><span>$0.00 (no state tax)</span></div>
+            <div class="tax-row red"><span id="tax-state-label">NV — No State Income Tax</span><span id="tax-state">$0.00</span></div>
             <div class="tax-row total"><span>Total Estimated Tax</span><span id="tax-total">$0.00</span></div>
             <div class="tax-row total"><span>Effective Rate</span><span id="tax-rate">0%</span></div>
           </div>
           <div class="tax-note">
             Estimates use <span id="tax-std-ded-label">$15,000</span> standard deduction (single filer).
-            Quarterly estimated payments may be required. Consult a tax professional for exact amounts.
+            Year-specific IRS rates, brackets, SS wage base, and QBI thresholds applied.
+            NV resident 2022-Mar 2025, CA resident from Apr 2025.
+            Consult a tax professional for exact amounts.
           </div>
         </div>
       </div>
