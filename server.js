@@ -182,6 +182,37 @@ app.get('/api/records', (req, res) => {
   res.json(records);
 });
 
+// ── API: Extract odometer reading + date from photo (no record created) ──
+app.post('/api/extract-odometer',
+  upload.single('image'),
+  async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'No image provided' });
+
+      const exifDate = await getExifDate(file.path);
+      let reading = null;
+      let error = null;
+
+      if (ai) {
+        const result = await extractOdometerFromImage(file);
+        reading = result.reading;
+        error = result.error;
+      }
+
+      res.json({
+        reading,
+        date: exifDate,
+        filename: file.filename,
+        error
+      });
+    } catch (err) {
+      console.error('Extract odometer error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
 // ── API: Create / Update record ─────────────────────────────
 // Helper: extract EXIF date from an image file
 async function getExifDate(filePath) {
@@ -231,7 +262,7 @@ app.post('/api/records',
   ]),
   async (req, res) => {
     try {
-      const { date, earnings, gasCost, notes, personalMiles, odometerReading, startMiles } = req.body;
+      const { date, earnings, gasCost, notes, personalMiles, odometerReading, startMiles, startImageFilename, odometerImageFilename } = req.body;
       const files = req.files || {};
       const startOdometerImage = files['startOdometerImage']?.[0];
       const odometerImage = files['odometerImage']?.[0];
@@ -352,8 +383,8 @@ app.post('/api/records',
       if (hasOdometer) finalOdometer = parseFloat(odometerReading);
       else if (extractedEndMiles !== null) finalOdometer = extractedEndMiles;
 
-      const startImagePath = startOdometerImage ? `/uploads/${startOdometerImage.filename}` : (existing?.start_image_path || null);
-      const odometerImagePath = odometerImage ? `/uploads/${odometerImage.filename}` : (existing?.odometer_image_path || null);
+      const startImagePath = startOdometerImage ? `/uploads/${startOdometerImage.filename}` : (startImageFilename ? `/uploads/${startImageFilename}` : (existing?.start_image_path || null));
+      const odometerImagePath = odometerImage ? `/uploads/${odometerImage.filename}` : (odometerImageFilename ? `/uploads/${odometerImageFilename}` : (existing?.odometer_image_path || null));
       const gasReceiptImagePath = gasReceiptImage ? `/uploads/${gasReceiptImage.filename}` : (existing?.gas_receipt_image_path || null);
 
       const newNotes = notes || '';

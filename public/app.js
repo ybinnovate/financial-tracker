@@ -812,36 +812,90 @@ batchOdoBtn.addEventListener('click', async () => {
   batchOdoBtn.textContent = 'Processing...';
   batchOdoStatus.style.display = 'block';
 
+  // Phase 1: Extract reading + date from each photo
+  const extractions = [];
+  for (let i = 0; i < files.length; i++) {
+    batchOdoStatus.textContent = `Extracting photo ${i + 1} of ${files.length}...`;
+    const fd = new FormData();
+    fd.append('image', files[i]);
+    try {
+      const resp = await fetch('/api/extract-odometer', { method: 'POST', body: fd });
+      if (resp.ok) {
+        const data = await resp.json();
+        extractions.push({
+          reading: data.reading,
+          date: data.date || new Date().toISOString().split('T')[0],
+          filename: data.filename,
+          error: data.error
+        });
+      } else {
+        extractions.push({ reading: null, date: null, filename: null, error: 'Upload failed' });
+      }
+    } catch (err) {
+      extractions.push({ reading: null, date: null, filename: null, error: err.message });
+    }
+  }
+
+  // Phase 2: Group by date
+  const byDate = {};
+  for (const ex of extractions) {
+    if (!ex.date || ex.reading === null) continue;
+    if (!byDate[ex.date]) byDate[ex.date] = [];
+    byDate[ex.date].push(ex);
+  }
+
+  // Phase 3: For each date group, pair start/end and create records
   let saved = 0;
   let errors = 0;
-  for (let i = 0; i < files.length; i++) {
-    batchOdoStatus.textContent = `Processing photo ${i + 1} of ${files.length}...`;
+  const dates = Object.keys(byDate).sort();
+  for (let di = 0; di < dates.length; di++) {
+    const dt = dates[di];
+    const group = byDate[dt].sort((a, b) => a.reading - b.reading);
+    batchOdoStatus.textContent = `Creating record ${di + 1} of ${dates.length} (${dt})...`;
+
     const formData = new FormData();
-    formData.append('odometerImage', files[i]);
-    formData.append('date', new Date().toISOString().split('T')[0]);
+    formData.append('date', dt);
     formData.append('earnings', '0');
+
+    if (group.length >= 2) {
+      // Two+ photos same day: lowest = start, highest = end
+      formData.append('startMiles', group[0].reading);
+      formData.append('startImageFilename', group[0].filename);
+      formData.append('odometerReading', group[group.length - 1].reading);
+      formData.append('odometerImageFilename', group[group.length - 1].filename);
+    } else {
+      // Single photo: end miles only
+      formData.append('odometerReading', group[0].reading);
+      formData.append('odometerImageFilename', group[0].filename);
+    }
+
     try {
       const resp = await fetch('/api/records', { method: 'POST', body: formData });
       if (resp.ok) {
-        const data = await resp.json();
-        if (data.syncError) console.warn('Notion sync error:', data.syncError);
         saved++;
       } else { errors++; }
     } catch (err) {
-      console.error('Batch odometer error:', err);
+      console.error('Batch record error:', err);
       errors++;
     }
   }
 
+  // Count photos that had no reading extracted
+  const failedExtractions = extractions.filter(e => e.reading === null).length;
+
   await fetchUberRecords();
   renderUber();
 
-  batchOdoStatus.textContent = `Processed: ${saved} saved${errors ? ', ' + errors + ' failed' : ''}. AI extracted odometer values and dates from EXIF.`;
+  let msg = `Done: ${saved} record(s) created from ${extractions.length} photos.`;
+  if (failedExtractions) msg += ` ${failedExtractions} photo(s) could not be read.`;
+  const paired = Object.values(byDate).filter(g => g.length >= 2).length;
+  if (paired) msg += ` ${paired} day(s) auto-paired start/end miles.`;
+  batchOdoStatus.textContent = msg;
   batchOdoStatus.style.color = errors ? 'var(--expense)' : 'var(--income)';
   batchOdoBtn.disabled = false;
   batchOdoBtn.textContent = 'Process All Photos';
   batchOdoInput.value = '';
-  document.getElementById('batch-odometer-placeholder').innerHTML = '<span class="upload-icon">&#128247;</span><span>Drag & drop or tap to upload multiple photos</span><span class="upload-hint">(Odometer photos & gas receipts — AI reads values & EXIF dates)</span>';
+  document.getElementById('batch-odometer-placeholder').innerHTML = '<span class="upload-icon">&#128247;</span><span>Drag & drop or tap to upload multiple photos</span><span class="upload-hint">(Odometer photos — AI reads values, EXIF dates, auto-pairs start/end)</span>';
   batchOdoBtn.style.display = 'none';
 });
 
