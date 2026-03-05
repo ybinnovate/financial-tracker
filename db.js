@@ -82,6 +82,19 @@ async function initDb() {
   // Migration: add start_miles columns to existing databases
   try { db.run('ALTER TABLE records ADD COLUMN start_miles REAL'); } catch (e) {}
   try { db.run('ALTER TABLE records ADD COLUMN start_image_path TEXT'); } catch (e) {}
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      category TEXT NOT NULL,
+      date TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   saveToFile();
 
   return wrapper;

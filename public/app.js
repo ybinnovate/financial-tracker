@@ -25,7 +25,7 @@ const CHART_COLORS = [
 ];
 
 // ── State ───────────────────────────────────────────────────
-let transactions = JSON.parse(localStorage.getItem('ft_transactions') || '[]');
+let transactions = [];
 let budgets = JSON.parse(localStorage.getItem('ft_budgets') || '{}');
 let currentMonth = new Date();
 currentMonth.setDate(1);
@@ -34,9 +34,17 @@ let categoryChart = null;
 let monthlyChart = null;
 
 // ── Persistence ─────────────────────────────────────────────
-function save() {
-  localStorage.setItem('ft_transactions', JSON.stringify(transactions));
+function saveBudgets() {
   localStorage.setItem('ft_budgets', JSON.stringify(budgets));
+}
+
+async function fetchTransactions() {
+  try {
+    const resp = await fetch('/api/transactions');
+    if (resp.ok) transactions = await resp.json();
+  } catch (e) {
+    console.error('Failed to fetch transactions:', e);
+  }
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -161,7 +169,7 @@ txExtractBtn.addEventListener('click', async () => {
 });
 
 // ── Transactions ────────────────────────────────────────────
-document.getElementById('transaction-form').addEventListener('submit', (e) => {
+document.getElementById('transaction-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const tx = {
     id: uid(),
@@ -171,8 +179,18 @@ document.getElementById('transaction-form').addEventListener('submit', (e) => {
     date: document.getElementById('tx-date').value,
     description: document.getElementById('tx-description').value.trim()
   };
-  transactions.push(tx);
-  save();
+
+  try {
+    await fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tx)
+    });
+    await fetchTransactions();
+  } catch (err) {
+    alert('Failed to save transaction: ' + err.message);
+  }
+
   e.target.reset();
   document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('tx-type').dispatchEvent(new Event('change'));
@@ -184,12 +202,18 @@ document.getElementById('transaction-form').addEventListener('submit', (e) => {
   txExtractStatus.style.display = 'none';
   txExtractStatus.style.color = 'var(--accent)';
   renderTransactions();
+  refreshDashboard();
 });
 
-function deleteTransaction(id) {
-  transactions = transactions.filter(t => t.id !== id);
-  save();
+async function deleteTransaction(id) {
+  try {
+    await fetch('/api/transactions/' + id, { method: 'DELETE' });
+    await fetchTransactions();
+  } catch (err) {
+    alert('Failed to delete: ' + err.message);
+  }
   renderTransactions();
+  refreshDashboard();
 }
 
 function renderTransactions() {
@@ -231,14 +255,14 @@ document.getElementById('budget-form').addEventListener('submit', (e) => {
   const category = document.getElementById('budget-category').value;
   const amount = parseFloat(document.getElementById('budget-amount').value);
   budgets[category] = amount;
-  save();
+  saveBudgets();
   e.target.reset();
   renderBudgets();
 });
 
 function deleteBudget(category) {
   delete budgets[category];
-  save();
+  saveBudgets();
   renderBudgets();
 }
 
@@ -689,6 +713,7 @@ async function init() {
   document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('uber-date').value = new Date().toISOString().split('T')[0];
   populateCategoryDropdowns();
+  await fetchTransactions();
   renderTransactions();
   renderBudgets();
   refreshDashboard();

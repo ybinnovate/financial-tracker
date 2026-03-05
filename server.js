@@ -58,6 +58,30 @@ app.use('/uploads', express.static(uploadDir));
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── API: Transactions (financial tracker) ───────────────────
+app.get('/api/transactions', (req, res) => {
+  const rows = db.prepare('SELECT * FROM transactions ORDER BY date DESC').all();
+  res.json(rows);
+});
+
+app.post('/api/transactions', (req, res) => {
+  const { id, type, amount, category, date, description } = req.body;
+  if (!id || !type || !amount || !category || !date) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  db.prepare(`
+    INSERT INTO transactions (id, type, amount, category, date, description)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, type, parseFloat(amount), category, date, description || '');
+  const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+  res.json(row);
+});
+
+app.delete('/api/transactions/:id', (req, res) => {
+  const result = db.prepare('DELETE FROM transactions WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 // ── API: Get all records ────────────────────────────────────
 app.get('/api/records', (req, res) => {
   const records = db.prepare('SELECT * FROM records ORDER BY date DESC').all();
