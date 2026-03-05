@@ -66,14 +66,14 @@ app.get('/api/transactions', (req, res) => {
 });
 
 app.post('/api/transactions', (req, res) => {
-  const { id, type, amount, category, date, description, business } = req.body;
+  const { id, type, amount, category, date, description, business, receipt_image_path } = req.body;
   if (!id || !type || !amount || !category || !date) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   db.prepare(`
-    INSERT INTO transactions (id, type, amount, category, date, description, business)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, type, parseFloat(amount), category, date, description || '', business || '');
+    INSERT INTO transactions (id, type, amount, category, date, description, business, receipt_image_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, type, parseFloat(amount), category, date, description || '', business || '', receipt_image_path || null);
   const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
   res.json(row);
 });
@@ -422,13 +422,13 @@ Return a raw JSON object with keys: "storeName" (string), "amount" (number), "da
           const exifDate = await getExifDate(req.file.path);
           if (exifDate) data.date = exifDate;
         }
-        res.json({ success: true, ...data });
+        const receiptImagePath = `/uploads/${req.file.filename}`;
+        res.json({ success: true, ...data, receiptImagePath });
       } else {
-        res.json({ success: false, error: 'Could not parse receipt data' });
+        const receiptImagePath = `/uploads/${req.file.filename}`;
+        res.json({ success: false, error: 'Could not parse receipt data', receiptImagePath });
       }
-
-      // Clean up uploaded file (not stored permanently for transactions)
-      fs.unlink(req.file.path, () => {});
+      // File is kept for receipt gallery
     } catch (error) {
       console.error('Receipt extraction error:', error);
       fs.unlink(req.file.path, () => {});
@@ -508,6 +508,30 @@ app.post('/api/extract-statement',
     }
   }
 );
+
+// ── API: Receipts gallery ────────────────────────────────────
+app.get('/api/receipts', (req, res) => {
+  const receipts = [];
+
+  // Uber record images
+  const records = db.prepare('SELECT date, start_image_path, odometer_image_path, gas_receipt_image_path FROM records ORDER BY date DESC').all();
+  records.forEach(r => {
+    if (r.start_image_path) receipts.push({ date: r.date, source: 'Uber', type: 'Start Odometer', path: r.start_image_path, description: 'Start odometer' });
+    if (r.odometer_image_path) receipts.push({ date: r.date, source: 'Uber', type: 'End Odometer', path: r.odometer_image_path, description: 'End odometer' });
+    if (r.gas_receipt_image_path) receipts.push({ date: r.date, source: 'Uber', type: 'Gas Receipt', path: r.gas_receipt_image_path, description: 'Gas receipt' });
+  });
+
+  // Transaction receipt images
+  const txs = db.prepare('SELECT date, receipt_image_path, description, category, business FROM transactions WHERE receipt_image_path IS NOT NULL ORDER BY date DESC').all();
+  txs.forEach(t => {
+    if (t.receipt_image_path) {
+      receipts.push({ date: t.date, source: t.business || 'Personal', type: 'Receipt', path: t.receipt_image_path, description: t.description || t.category });
+    }
+  });
+
+  receipts.sort((a, b) => b.date.localeCompare(a.date));
+  res.json(receipts);
+});
 
 // ── API: Config status ──────────────────────────────────────
 app.get('/api/config', (req, res) => {

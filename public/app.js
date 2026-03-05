@@ -76,6 +76,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     if (btn.dataset.tab === 'uber') refreshUber();
     if (btn.dataset.tab === 'yb') refreshYB();
     if (btn.dataset.tab === 'tax') refreshTax();
+    if (btn.dataset.tab === 'receipts') refreshReceipts();
   });
 });
 
@@ -118,6 +119,7 @@ function populateCategoryDropdowns() {
 const txReceiptInput = document.getElementById('tx-receipt-image');
 const txExtractBtn = document.getElementById('tx-extract-btn');
 const txExtractStatus = document.getElementById('tx-extract-status');
+let pendingReceiptImagePath = null;
 
 txReceiptInput.addEventListener('change', () => {
   txExtractBtn.style.display = txReceiptInput.files.length ? 'block' : 'none';
@@ -138,6 +140,9 @@ txExtractBtn.addEventListener('click', async () => {
   try {
     const resp = await fetch('/api/extract-receipt', { method: 'POST', body: formData });
     const data = await resp.json();
+
+    // Save receipt image path (kept on server now)
+    if (data.receiptImagePath) pendingReceiptImagePath = data.receiptImagePath;
 
     if (data.success) {
       // Pre-fill form
@@ -315,7 +320,8 @@ document.getElementById('transaction-form').addEventListener('submit', async (e)
     category: document.getElementById('tx-category').value,
     date: document.getElementById('tx-date').value,
     description: document.getElementById('tx-description').value.trim(),
-    business: document.getElementById('tx-business').value
+    business: document.getElementById('tx-business').value,
+    receipt_image_path: pendingReceiptImagePath || null
   };
 
   try {
@@ -339,6 +345,7 @@ document.getElementById('transaction-form').addEventListener('submit', async (e)
   txExtractBtn.style.display = 'none';
   txExtractStatus.style.display = 'none';
   txExtractStatus.style.color = 'var(--accent)';
+  pendingReceiptImagePath = null;
   renderTransactions();
   refreshDashboard();
 });
@@ -1212,6 +1219,117 @@ function exportTaxSummary() {
   URL.revokeObjectURL(url);
 }
 
+// ══════════════════════════════════════════════════════════════
+// ── RECEIPTS GALLERY ────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+let allReceipts = [];
+
+async function fetchReceipts() {
+  try {
+    const resp = await fetch('/api/receipts');
+    if (resp.ok) allReceipts = await resp.json();
+  } catch (e) {
+    console.error('Failed to fetch receipts:', e);
+  }
+}
+
+function renderReceipts() {
+  const from = document.getElementById('receipt-from').value;
+  const to = document.getElementById('receipt-to').value;
+
+  let filtered = [...allReceipts];
+  if (from) filtered = filtered.filter(r => r.date >= from);
+  if (to) filtered = filtered.filter(r => r.date <= to);
+
+  // Group by date
+  const grouped = {};
+  filtered.forEach(r => {
+    if (!grouped[r.date]) grouped[r.date] = [];
+    grouped[r.date].push(r);
+  });
+
+  const sortedDates = Object.keys(grouped).sort().reverse();
+  const gallery = document.getElementById('receipt-gallery');
+
+  if (sortedDates.length === 0) {
+    gallery.innerHTML = '<div class="empty-state">No receipts found.</div>';
+    return;
+  }
+
+  gallery.innerHTML = sortedDates.map(date => {
+    const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    });
+    return `
+      <div class="receipt-date-group">
+        <h4 class="receipt-date-header">${dateStr}</h4>
+        <div class="receipt-grid">
+          ${grouped[date].map(r => `
+            <div class="receipt-card">
+              <a href="${r.path}" target="_blank">
+                <img src="${r.path}" alt="${r.description}" loading="lazy">
+              </a>
+              <div class="receipt-card-info">
+                <span class="receipt-source">${r.source}</span>
+                <span class="receipt-desc">${r.description}</span>
+              </div>
+              <a href="${r.path}" download class="receipt-dl-btn" title="Download">&#8681;</a>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function downloadReceiptsInRange() {
+  const from = document.getElementById('receipt-from').value;
+  const to = document.getElementById('receipt-to').value;
+
+  let filtered = [...allReceipts];
+  if (from) filtered = filtered.filter(r => r.date >= from);
+  if (to) filtered = filtered.filter(r => r.date <= to);
+
+  if (filtered.length === 0) return alert('No receipts in this range.');
+
+  const btn = document.getElementById('receipt-download-btn');
+  btn.disabled = true;
+  btn.textContent = `Downloading ${filtered.length} files...`;
+
+  try {
+    const zip = new JSZip();
+    for (let i = 0; i < filtered.length; i++) {
+      const r = filtered[i];
+      btn.textContent = `Fetching ${i + 1}/${filtered.length}...`;
+      const resp = await fetch(r.path);
+      const blob = await resp.blob();
+      const ext = r.path.split('.').pop();
+      const safeName = r.description.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30);
+      zip.file(`${r.date}_${r.source}_${safeName}.${ext}`, blob);
+    }
+
+    btn.textContent = 'Creating zip...';
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `receipts_${from || 'all'}_to_${to || 'all'}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Download failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download All in Range';
+  }
+}
+
+function refreshReceipts() {
+  fetchReceipts().then(renderReceipts);
+}
+
 // ── Init ────────────────────────────────────────────────────
 async function init() {
   document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
@@ -1233,6 +1351,9 @@ async function init() {
   populateTaxYears();
   document.getElementById('tax-year').addEventListener('change', refreshTax);
   document.getElementById('tax-export-btn').addEventListener('click', exportTaxSummary);
+  document.getElementById('receipt-from').addEventListener('change', renderReceipts);
+  document.getElementById('receipt-to').addEventListener('change', renderReceipts);
+  document.getElementById('receipt-download-btn').addEventListener('click', downloadReceiptsInRange);
 }
 
 init();

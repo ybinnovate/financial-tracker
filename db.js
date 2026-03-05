@@ -98,6 +98,8 @@ async function initDb() {
 
   // Migration: add business column to existing transactions
   try { db.run('ALTER TABLE transactions ADD COLUMN business TEXT DEFAULT \'\''); } catch (e) {}
+  // Migration: add receipt_image_path to transactions
+  try { db.run('ALTER TABLE transactions ADD COLUMN receipt_image_path TEXT'); } catch (e) {}
 
   saveToFile();
 
