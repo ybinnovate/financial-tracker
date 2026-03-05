@@ -168,6 +168,141 @@ txExtractBtn.addEventListener('click', async () => {
   }
 });
 
+// ── Statement Extraction ────────────────────────────────────
+const stmtFile = document.getElementById('statement-file');
+const stmtExtractBtn = document.getElementById('statement-extract-btn');
+const stmtStatus = document.getElementById('statement-status');
+let pendingStatementTx = [];
+
+stmtFile.addEventListener('change', () => {
+  stmtExtractBtn.style.display = stmtFile.files.length ? 'block' : 'none';
+  stmtStatus.style.display = 'none';
+  // Show preview for images (not PDFs)
+  const file = stmtFile.files[0];
+  const preview = document.getElementById('statement-preview');
+  const placeholder = document.getElementById('statement-placeholder');
+  if (file && file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onloadend = () => { preview.src = reader.result; preview.style.display = 'block'; placeholder.style.display = 'none'; };
+    reader.readAsDataURL(file);
+  } else if (file) {
+    preview.style.display = 'none';
+    placeholder.innerHTML = '<span class="upload-icon">&#128196;</span><span>' + file.name + '</span><span class="upload-hint">(PDF ready)</span>';
+  }
+});
+
+stmtExtractBtn.addEventListener('click', async () => {
+  if (!stmtFile.files.length) return;
+  stmtExtractBtn.disabled = true;
+  stmtExtractBtn.textContent = 'Extracting with AI...';
+  stmtStatus.style.display = 'block';
+  stmtStatus.textContent = 'Analyzing statement... this may take a moment.';
+
+  const formData = new FormData();
+  formData.append('statementFile', stmtFile.files[0]);
+
+  try {
+    const resp = await fetch('/api/extract-statement', { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (data.success && data.transactions?.length) {
+      pendingStatementTx = data.transactions;
+      showStatementReview();
+      stmtStatus.textContent = `Found ${data.transactions.length} transactions.`;
+      stmtStatus.style.color = 'var(--income)';
+    } else {
+      stmtStatus.textContent = data.error || 'No transactions found.';
+      stmtStatus.style.color = 'var(--expense)';
+    }
+  } catch (err) {
+    stmtStatus.textContent = 'Error: ' + err.message;
+    stmtStatus.style.color = 'var(--expense)';
+  } finally {
+    stmtExtractBtn.disabled = false;
+    stmtExtractBtn.textContent = 'Extract Transactions';
+  }
+});
+
+function showStatementReview() {
+  const business = document.getElementById('statement-business').value;
+  const container = document.getElementById('statement-items');
+  container.innerHTML = pendingStatementTx.map((tx, i) => `
+    <div class="tx-item" style="flex-wrap:wrap;gap:0.3rem;padding:0.6rem" data-idx="${i}">
+      <div style="display:flex;align-items:center;gap:0.5rem;width:100%">
+        <input type="checkbox" checked data-stmt-check="${i}" style="width:1rem;height:1rem">
+        <span style="flex:1;font-size:0.85rem">${tx.description || 'Unknown'}</span>
+        <span style="font-weight:600;font-size:0.85rem;color:${tx.type === 'income' ? 'var(--income)' : 'var(--expense)'}">
+          ${tx.type === 'income' ? '+' : '-'}$${parseFloat(tx.amount).toFixed(2)}
+        </span>
+      </div>
+      <div style="display:flex;gap:0.4rem;width:100%;padding-left:1.5rem;font-size:0.75rem;color:var(--text-muted)">
+        <span>${tx.date}</span>
+        <select data-stmt-cat="${i}" style="font-size:0.75rem;padding:1px 4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
+          ${EXPENSE_CATEGORIES.map(c => `<option value="${c}" ${c === tx.category ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('statement-count').textContent = `${pendingStatementTx.length} items`;
+  document.getElementById('statement-modal').style.display = 'flex';
+}
+
+document.getElementById('statement-modal-close').addEventListener('click', () => {
+  document.getElementById('statement-modal').style.display = 'none';
+});
+document.getElementById('statement-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
+});
+
+document.getElementById('statement-save-btn').addEventListener('click', async () => {
+  const business = document.getElementById('statement-business').value;
+  const toSave = [];
+  pendingStatementTx.forEach((tx, i) => {
+    const checked = document.querySelector(`[data-stmt-check="${i}"]`)?.checked;
+    if (!checked) return;
+    const category = document.querySelector(`[data-stmt-cat="${i}"]`)?.value || tx.category;
+    toSave.push({
+      id: uid(),
+      type: tx.type || 'expense',
+      amount: parseFloat(tx.amount),
+      category,
+      date: tx.date,
+      description: tx.description || '',
+      business
+    });
+  });
+
+  if (toSave.length === 0) return alert('No transactions selected.');
+
+  const btn = document.getElementById('statement-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    await fetch('/api/transactions/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactions: toSave })
+    });
+    await fetchTransactions();
+    renderTransactions();
+    refreshDashboard();
+    document.getElementById('statement-modal').style.display = 'none';
+    // Reset
+    stmtFile.value = '';
+    document.getElementById('statement-preview').style.display = 'none';
+    document.getElementById('statement-placeholder').innerHTML = '<span class="upload-icon">&#128196;</span><span>Upload PDF or photo of statement</span><span class="upload-hint">(AI extracts all line items)</span>';
+    stmtExtractBtn.style.display = 'none';
+    stmtStatus.textContent = `Saved ${toSave.length} transactions!`;
+    stmtStatus.style.color = 'var(--income)';
+  } catch (err) {
+    alert('Failed to save: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save All';
+  }
+});
+
 // ── Transactions ────────────────────────────────────────────
 document.getElementById('transaction-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -177,7 +312,8 @@ document.getElementById('transaction-form').addEventListener('submit', async (e)
     amount: parseFloat(document.getElementById('tx-amount').value),
     category: document.getElementById('tx-category').value,
     date: document.getElementById('tx-date').value,
-    description: document.getElementById('tx-description').value.trim()
+    description: document.getElementById('tx-description').value.trim(),
+    business: document.getElementById('tx-business').value
   };
 
   try {
@@ -220,21 +356,25 @@ function renderTransactions() {
   const list = document.getElementById('transaction-list');
   const filterType = document.getElementById('filter-type').value;
   const filterCat = document.getElementById('filter-category').value;
+  const filterBiz = document.getElementById('filter-business').value;
 
   let filtered = [...transactions].sort((a, b) => b.date.localeCompare(a.date));
   if (filterType !== 'all') filtered = filtered.filter(t => t.type === filterType);
   if (filterCat !== 'all') filtered = filtered.filter(t => t.category === filterCat);
+  if (filterBiz !== 'all') filtered = filtered.filter(t => (t.business || '') === filterBiz);
 
   if (filtered.length === 0) {
     list.innerHTML = '<div class="empty-state">No transactions yet. Add one above!</div>';
     return;
   }
 
-  list.innerHTML = filtered.map(tx => `
+  list.innerHTML = filtered.map(tx => {
+    const bizTag = tx.business ? `<span style="font-size:0.6rem;background:var(--accent);color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px">${tx.business}</span>` : '';
+    return `
     <div class="tx-item">
       <div class="tx-icon ${tx.type}">${CATEGORY_ICONS[tx.category] || '📌'}</div>
       <div class="tx-details">
-        <div class="tx-cat">${tx.category}</div>
+        <div class="tx-cat">${tx.category}${bizTag}</div>
         <div class="tx-desc">${tx.description || '—'}</div>
       </div>
       <div class="tx-meta">
@@ -242,12 +382,13 @@ function renderTransactions() {
         <div class="tx-date">${new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
       </div>
       <button class="tx-delete" onclick="deleteTransaction('${tx.id}')" title="Delete">&times;</button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 document.getElementById('filter-type').addEventListener('change', renderTransactions);
 document.getElementById('filter-category').addEventListener('change', renderTransactions);
+document.getElementById('filter-business').addEventListener('change', renderTransactions);
 
 // ── Budgets ─────────────────────────────────────────────────
 document.getElementById('budget-form').addEventListener('submit', (e) => {

@@ -8,6 +8,7 @@ const { initDb } = require('./db');
 const OpenAI = require('openai');
 const { Client } = require('@notionhq/client');
 const exifr = require('exifr');
+const pdfParse = require('pdf-parse');
 
 let db = null;
 const app = express();
@@ -65,20 +66,37 @@ app.get('/api/transactions', (req, res) => {
 });
 
 app.post('/api/transactions', (req, res) => {
-  const { id, type, amount, category, date, description } = req.body;
+  const { id, type, amount, category, date, description, business } = req.body;
   if (!id || !type || !amount || !category || !date) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
   db.prepare(`
-    INSERT INTO transactions (id, type, amount, category, date, description)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, type, parseFloat(amount), category, date, description || '');
+    INSERT INTO transactions (id, type, amount, category, date, description, business)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, type, parseFloat(amount), category, date, description || '', business || '');
   const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
   res.json(row);
 });
 
+app.post('/api/transactions/bulk', (req, res) => {
+  const { transactions } = req.body;
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    return res.status(400).json({ error: 'No transactions provided' });
+  }
+  let saved = 0;
+  for (const tx of transactions) {
+    if (!tx.id || !tx.type || !tx.amount || !tx.category || !tx.date) continue;
+    db.prepare(`
+      INSERT INTO transactions (id, type, amount, category, date, description, business)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(tx.id, tx.type, parseFloat(tx.amount), tx.category, tx.date, tx.description || '', tx.business || '');
+    saved++;
+  }
+  res.json({ success: true, saved });
+});
+
 app.delete('/api/transactions/:id', (req, res) => {
-  const result = db.prepare('DELETE FROM transactions WHERE id = ?').run(req.params.id);
+  db.prepare('DELETE FROM transactions WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
@@ -415,6 +433,78 @@ Return a raw JSON object with keys: "storeName" (string), "amount" (number), "da
       console.error('Receipt extraction error:', error);
       fs.unlink(req.file.path, () => {});
       res.status(500).json({ error: 'Failed to extract receipt data' });
+    }
+  }
+);
+
+// ── API: Extract credit card statement ──────────────────────
+const STATEMENT_PROMPT = `Analyze this credit card statement. Extract ALL individual transactions/line items.
+For each transaction, determine:
+1. Date (YYYY-MM-DD format)
+2. Description/merchant name
+3. Amount (positive number)
+4. Whether it's a charge (expense) or payment/credit (income)
+5. Best matching category from: Food & Dining, Transportation, Housing, Utilities, Entertainment, Shopping, Healthcare, Education, Personal Care, Travel, Subscriptions, Other
+
+Return a raw JSON array of objects with keys: "date" (string), "description" (string), "amount" (number), "type" ("expense" or "income"), "category" (string from list above).
+No markdown, no explanation, just the JSON array.`;
+
+app.post('/api/extract-statement',
+  upload.single('statementFile'),
+  async (req, res) => {
+    if (!ai) return res.status(400).json({ error: 'AI not configured' });
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+
+    try {
+      const isPdf = req.file.mimetype === 'application/pdf' ||
+                     req.file.originalname.toLowerCase().endsWith('.pdf');
+      let aiMessages;
+
+      if (isPdf) {
+        // Extract text from PDF and send as text prompt
+        const buffer = fs.readFileSync(req.file.path);
+        const pdfData = await pdfParse(buffer);
+        const text = pdfData.text;
+        console.log('PDF text length:', text.length);
+
+        aiMessages = [{
+          role: 'user',
+          content: STATEMENT_PROMPT + '\n\nStatement text:\n' + text.substring(0, 15000)
+        }];
+      } else {
+        // Image: use vision
+        const base64 = fs.readFileSync(req.file.path, 'base64');
+        aiMessages = [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:${req.file.mimetype};base64,${base64}` } },
+            { type: 'text', text: STATEMENT_PROMPT }
+          ]
+        }];
+      }
+
+      const resp = await ai.chat.completions.create({
+        model: VISION_MODEL,
+        messages: aiMessages
+      });
+
+      let text = resp.choices?.[0]?.message?.content?.trim() || '';
+      console.log('Statement AI response length:', text.length);
+      text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const items = JSON.parse(jsonMatch[0]);
+        res.json({ success: true, transactions: items });
+      } else {
+        res.json({ success: false, error: 'Could not parse statement data' });
+      }
+
+      fs.unlink(req.file.path, () => {});
+    } catch (error) {
+      console.error('Statement extraction error:', error);
+      fs.unlink(req.file.path, () => {});
+      res.status(500).json({ error: 'Failed to extract statement: ' + error.message });
     }
   }
 );

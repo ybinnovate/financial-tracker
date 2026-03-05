@@ -101,12 +101,63 @@
               <input type="date" id="tx-date" required>
             </div>
           </div>
-          <div class="form-group">
-            <label for="tx-description">Description</label>
-            <input type="text" id="tx-description" placeholder="Optional description" maxlength="100">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="tx-description">Description</label>
+              <input type="text" id="tx-description" placeholder="Optional description" maxlength="100">
+            </div>
+            <div class="form-group">
+              <label for="tx-business">Business</label>
+              <select id="tx-business">
+                <option value="">Personal</option>
+                <option value="易北教育">易北教育</option>
+              </select>
+            </div>
           </div>
           <button type="submit" class="btn-primary">Add Transaction</button>
         </form>
+      </div>
+
+      <!-- Statement Upload -->
+      <div class="form-container">
+        <h3>Import Credit Card Statement</h3>
+        <input type="file" id="statement-file" accept="application/pdf,image/*" style="display:none">
+        <div class="upload-zone" onclick="document.getElementById('statement-file').click()">
+          <div class="upload-placeholder" id="statement-placeholder">
+            <span class="upload-icon">&#128196;</span>
+            <span>Upload PDF or photo of statement</span>
+            <span class="upload-hint">(AI extracts all line items)</span>
+          </div>
+          <img id="statement-preview" class="upload-preview" style="display:none" alt="Statement preview">
+        </div>
+        <div class="form-row" style="margin-top:0.5rem">
+          <div class="form-group">
+            <label for="statement-business">Business</label>
+            <select id="statement-business">
+              <option value="">Personal</option>
+              <option value="易北教育">易北教育</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button type="button" id="statement-extract-btn" class="btn-primary" style="display:none;width:100%">Extract Transactions</button>
+          </div>
+        </div>
+        <div id="statement-status" style="display:none;text-align:center;padding:0.5rem;font-size:0.85rem;color:var(--accent)"></div>
+      </div>
+
+      <!-- Statement Review Modal -->
+      <div id="statement-modal" class="uber-modal" style="display:none">
+        <div class="uber-modal-content" style="max-width:700px;max-height:90vh;overflow-y:auto">
+          <div class="uber-modal-header">
+            <h3>Review Extracted Transactions</h3>
+            <button id="statement-modal-close" class="tx-delete">&times;</button>
+          </div>
+          <div id="statement-items" style="padding:1rem"></div>
+          <div class="uber-modal-actions" style="padding:1rem;border-top:1px solid var(--border)">
+            <span id="statement-count" style="font-size:0.85rem;color:var(--text-muted)"></span>
+            <button type="button" id="statement-save-btn" class="btn-primary">Save All</button>
+          </div>
+        </div>
       </div>
 
       <div class="transaction-filters">
@@ -117,6 +168,11 @@
         </select>
         <select id="filter-category">
           <option value="all">All Categories</option>
+        </select>
+        <select id="filter-business">
+          <option value="all">All Sources</option>
+          <option value="">Personal</option>
+          <option value="易北教育">易北教育</option>
         </select>
       </div>
 

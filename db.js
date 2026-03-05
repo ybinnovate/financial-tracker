@@ -91,9 +91,13 @@ async function initDb() {
       category TEXT NOT NULL,
       date TEXT NOT NULL,
       description TEXT,
+      business TEXT DEFAULT '',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: add business column to existing transactions
+  try { db.run('ALTER TABLE transactions ADD COLUMN business TEXT DEFAULT \'\''); } catch (e) {}
 
   saveToFile();
 
