@@ -582,6 +582,10 @@
           </div>
           <div class="form-row">
             <div class="form-group">
+              <label for="bill-due-day">Due Day of Month</label>
+              <input type="number" id="bill-due-day" min="1" max="28" placeholder="1" value="1">
+            </div>
+            <div class="form-group">
               <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
                 <input type="checkbox" id="bill-recurring" checked style="width:auto">
                 Recurring monthly
@@ -615,19 +619,25 @@
             <input type="hidden" id="bp-month">
             <div class="form-row">
               <div class="form-group">
-                <label for="bp-amount-due">Amount Due</label>
-                <input type="number" id="bp-amount-due" step="0.01" min="0" placeholder="0.00">
+                <label for="bp-due-date">Due Date</label>
+                <input type="date" id="bp-due-date">
               </div>
               <div class="form-group">
-                <label for="bp-total-balance">Total Balance</label>
-                <input type="number" id="bp-total-balance" step="0.01" min="0" placeholder="0.00">
+                <label for="bp-amount-due">Amount Due</label>
+                <input type="number" id="bp-amount-due" step="0.01" min="0" placeholder="0.00">
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
+                <label for="bp-total-balance">Total Balance</label>
+                <input type="number" id="bp-total-balance" step="0.01" min="0" placeholder="0.00">
+              </div>
+              <div class="form-group">
                 <label for="bp-amount-paid">Amount Paid</label>
                 <input type="number" id="bp-amount-paid" step="0.01" min="0" placeholder="0.00">
               </div>
+            </div>
+            <div class="form-row">
               <div class="form-group">
                 <label for="bp-date-paid">Date Paid</label>
                 <input type="date" id="bp-date-paid">

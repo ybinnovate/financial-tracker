@@ -108,12 +108,12 @@ app.get('/api/bills', (req, res) => {
 });
 
 app.post('/api/bills', (req, res) => {
-  const { id, name, is_recurring, default_amount, notes } = req.body;
+  const { id, name, is_recurring, default_amount, due_day, notes } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'Missing required fields' });
   db.prepare(`
-    INSERT INTO bills (id, name, is_recurring, default_amount, notes)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, name.trim(), is_recurring ? 1 : 0, parseFloat(default_amount) || 0, notes || '');
+    INSERT INTO bills (id, name, is_recurring, default_amount, due_day, notes)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, name.trim(), is_recurring ? 1 : 0, parseFloat(default_amount) || 0, parseInt(due_day) || 1, notes || '');
   res.json(db.prepare('SELECT * FROM bills WHERE id = ?').get(id));
 });
 
@@ -133,10 +133,12 @@ app.get('/api/bill-payments', (req, res) => {
     const existing = db.prepare('SELECT id FROM bill_payments WHERE bill_id = ? AND month = ?').get(bill.id, month);
     if (!existing) {
       const payId = require('uuid').v4();
+      const dueDay = Math.min(bill.due_day || 1, 28);
+      const dueDate = `${month}-${String(dueDay).padStart(2, '0')}`;
       db.prepare(`
-        INSERT INTO bill_payments (id, bill_id, month, amount_due, total_balance, amount_paid, status)
-        VALUES (?, ?, ?, ?, 0, 0, 'pending')
-      `).run(payId, bill.id, month, bill.default_amount || 0);
+        INSERT INTO bill_payments (id, bill_id, month, due_date, amount_due, total_balance, amount_paid, status)
+        VALUES (?, ?, ?, ?, ?, 0, 0, 'pending')
+      `).run(payId, bill.id, month, dueDate, bill.default_amount || 0);
     }
   }
 
@@ -151,7 +153,7 @@ app.get('/api/bill-payments', (req, res) => {
 });
 
 app.post('/api/bill-payments', (req, res) => {
-  const { id, bill_id, month, amount_due, total_balance, amount_paid, date_paid, notes } = req.body;
+  const { id, bill_id, month, due_date, amount_due, total_balance, amount_paid, date_paid, notes } = req.body;
   if (!id || !bill_id || !month) return res.status(400).json({ error: 'Missing required fields' });
 
   const due = parseFloat(amount_due) || 0;
@@ -163,9 +165,9 @@ app.post('/api/bill-payments', (req, res) => {
   // Upsert: delete old then insert
   db.prepare('DELETE FROM bill_payments WHERE id = ?').run(id);
   db.prepare(`
-    INSERT INTO bill_payments (id, bill_id, month, amount_due, total_balance, amount_paid, date_paid, status, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, bill_id, month, due, parseFloat(total_balance) || 0, paid, date_paid || null, status, notes || '');
+    INSERT INTO bill_payments (id, bill_id, month, due_date, amount_due, total_balance, amount_paid, date_paid, status, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, bill_id, month, due_date || null, due, parseFloat(total_balance) || 0, paid, date_paid || null, status, notes || '');
   res.json(db.prepare('SELECT bp.*, b.name as bill_name FROM bill_payments bp JOIN bills b ON bp.bill_id = b.id WHERE bp.id = ?').get(id));
 });
 

@@ -71,6 +71,11 @@ function fmt(n) {
   return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function ordinal(n) {
+  const s = ['th','st','nd','rd'], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 function monthKey(date) {
   const d = typeof date === 'string' ? new Date(date + 'T00:00:00') : date;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -1431,7 +1436,8 @@ document.getElementById('bill-form').addEventListener('submit', async (e) => {
     id: uid(),
     name: document.getElementById('bill-name').value.trim(),
     is_recurring: document.getElementById('bill-recurring').checked ? 1 : 0,
-    default_amount: parseFloat(document.getElementById('bill-default-amount').value) || 0
+    default_amount: parseFloat(document.getElementById('bill-default-amount').value) || 0,
+    due_day: parseInt(document.getElementById('bill-due-day').value) || 1
   };
   try {
     await fetch('/api/bills', {
@@ -1474,7 +1480,7 @@ function renderBillDefinitions() {
       <div class="tx-icon expense" style="font-size:1.2rem">&#128176;</div>
       <div class="tx-details">
         <div class="tx-cat">${b.name}</div>
-        <div class="tx-desc">${b.is_recurring ? 'Recurring' : 'One-time'}${b.default_amount ? ' &middot; Default: ' + fmt(b.default_amount) : ''}</div>
+        <div class="tx-desc">${b.is_recurring ? 'Recurring' : 'One-time'}${b.due_day ? ' &middot; Due: ' + ordinal(b.due_day) : ''}${b.default_amount ? ' &middot; ' + fmt(b.default_amount) : ''}</div>
       </div>
       <button class="tx-delete" onclick="deleteBill('${b.id}')" title="Delete">&times;</button>
     </div>
@@ -1499,9 +1505,15 @@ function renderBillPayments() {
     return;
   }
 
-  list.innerHTML = billPayments.map(bp => {
+  // Sort by due date
+  const sorted = [...billPayments].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+
+  list.innerHTML = sorted.map(bp => {
     const statusClass = bp.status || 'pending';
     const statusLabel = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+    const dueDate = bp.due_date
+      ? new Date(bp.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '';
     const paidDate = bp.date_paid
       ? new Date(bp.date_paid + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : '';
@@ -1511,8 +1523,7 @@ function renderBillPayments() {
         <div class="bill-payment-info">
           <div class="bill-vendor">${bp.bill_name || 'Unknown'}</div>
           <div class="bill-amounts">
-            Due: ${fmt(bp.amount_due || 0)} &middot;
-            Balance: ${fmt(bp.total_balance || 0)}${paidDate ? ' &middot; Paid: ' + paidDate : ''}
+            ${dueDate ? 'Due: ' + dueDate + ' &middot; ' : ''}${fmt(bp.amount_due || 0)}${bp.total_balance ? ' &middot; Bal: ' + fmt(bp.total_balance) : ''}${paidDate ? ' &middot; Paid: ' + paidDate : ''}
           </div>
         </div>
         <div class="bill-payment-meta">
@@ -1530,6 +1541,7 @@ function openBillPaymentEdit(id, billId, month) {
   document.getElementById('bp-id').value = id;
   document.getElementById('bp-bill-id').value = billId;
   document.getElementById('bp-month').value = month;
+  document.getElementById('bp-due-date').value = bp?.due_date || '';
   document.getElementById('bp-amount-due').value = bp?.amount_due || '';
   document.getElementById('bp-total-balance').value = bp?.total_balance || '';
   document.getElementById('bp-amount-paid').value = bp?.amount_paid || '';
@@ -1555,6 +1567,7 @@ document.getElementById('bill-payment-form').addEventListener('submit', async (e
     id: document.getElementById('bp-id').value,
     bill_id: document.getElementById('bp-bill-id').value,
     month: document.getElementById('bp-month').value,
+    due_date: document.getElementById('bp-due-date').value || null,
     amount_due: parseFloat(document.getElementById('bp-amount-due').value) || 0,
     total_balance: parseFloat(document.getElementById('bp-total-balance').value) || 0,
     amount_paid: parseFloat(document.getElementById('bp-amount-paid').value) || 0,

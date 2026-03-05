@@ -107,16 +107,21 @@ async function initDb() {
       name TEXT NOT NULL,
       is_recurring INTEGER DEFAULT 1,
       default_amount REAL DEFAULT 0,
+      due_day INTEGER DEFAULT 1,
       notes TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: add due_day to bills
+  try { db.run('ALTER TABLE bills ADD COLUMN due_day INTEGER DEFAULT 1'); } catch (e) {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS bill_payments (
       id TEXT PRIMARY KEY,
       bill_id TEXT NOT NULL,
       month TEXT NOT NULL,
+      due_date TEXT,
       amount_due REAL DEFAULT 0,
       total_balance REAL DEFAULT 0,
       amount_paid REAL DEFAULT 0,
@@ -126,6 +131,9 @@ async function initDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: add due_date to bill_payments
+  try { db.run('ALTER TABLE bill_payments ADD COLUMN due_date TEXT'); } catch (e) {}
 
   saveToFile();
 
