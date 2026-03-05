@@ -19,6 +19,7 @@
       <button class="nav-btn" data-tab="yb">易北教育</button>
       <button class="nav-btn" data-tab="tax">Tax</button>
       <button class="nav-btn" data-tab="receipts">Receipts</button>
+      <button class="nav-btn" data-tab="bills">Bills</button>
     </nav>
   </header>
 
@@ -530,6 +531,112 @@
         <button id="receipt-download-btn" class="btn-primary" style="width:100%">Download All in Range</button>
       </div>
       <div id="receipt-gallery"></div>
+    </section>
+
+    <!-- Bills Tab -->
+    <section id="bills" class="tab-content">
+      <div class="uber-stats">
+        <div class="uber-stats-header">
+          <h3>Monthly Bills</h3>
+          <div class="uber-month-nav">
+            <button id="bills-prev-month">&larr;</button>
+            <span id="bills-month-label"></span>
+            <button id="bills-next-month">&rarr;</button>
+          </div>
+        </div>
+        <div class="uber-stat-cards" style="grid-template-columns: repeat(3, 1fr)">
+          <div class="uber-stat expenses">
+            <span class="uber-stat-label">Total Due</span>
+            <span class="uber-stat-value" id="bills-total-due">$0.00</span>
+          </div>
+          <div class="uber-stat earnings">
+            <span class="uber-stat-label">Total Paid</span>
+            <span class="uber-stat-value" id="bills-total-paid">$0.00</span>
+          </div>
+          <div class="uber-stat net">
+            <span class="uber-stat-label">Remaining</span>
+            <span class="uber-stat-value" id="bills-remaining">$0.00</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-container">
+        <h3>Add Bill</h3>
+        <form id="bill-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="bill-name">Vendor / Bill Name</label>
+              <input type="text" id="bill-name" placeholder="e.g. AT&amp;T, Electric, Water" required>
+            </div>
+            <div class="form-group">
+              <label for="bill-default-amount">Default Amount (optional)</label>
+              <input type="number" id="bill-default-amount" step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+                <input type="checkbox" id="bill-recurring" checked style="width:auto">
+                Recurring monthly
+              </label>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button type="submit" class="btn-primary" style="width:100%">Add Bill</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="form-container">
+        <h3>Registered Bills</h3>
+        <div id="bill-definitions-list" class="transaction-list"></div>
+      </div>
+
+      <h3 style="padding:0 1rem;color:var(--text-secondary)">Payment Details</h3>
+      <div id="bill-payments-list" style="display:flex;flex-direction:column;gap:0.5rem;padding:0 1rem 1rem"></div>
+
+      <!-- Payment Edit Modal -->
+      <div id="bill-payment-modal" class="uber-modal" style="display:none">
+        <div class="uber-modal-content">
+          <div class="uber-modal-header">
+            <h3 id="bill-payment-modal-title">Edit Payment</h3>
+            <button id="bill-payment-modal-close" class="tx-delete">&times;</button>
+          </div>
+          <form id="bill-payment-form">
+            <input type="hidden" id="bp-id">
+            <input type="hidden" id="bp-bill-id">
+            <input type="hidden" id="bp-month">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="bp-amount-due">Amount Due</label>
+                <input type="number" id="bp-amount-due" step="0.01" min="0" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label for="bp-total-balance">Total Balance</label>
+                <input type="number" id="bp-total-balance" step="0.01" min="0" placeholder="0.00">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="bp-amount-paid">Amount Paid</label>
+                <input type="number" id="bp-amount-paid" step="0.01" min="0" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label for="bp-date-paid">Date Paid</label>
+                <input type="date" id="bp-date-paid">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="bp-notes">Notes</label>
+              <input type="text" id="bp-notes" placeholder="Optional notes" maxlength="100">
+            </div>
+            <div class="uber-modal-actions">
+              <button type="button" id="bill-payment-cancel" class="btn-secondary">Cancel</button>
+              <button type="submit" class="btn-primary">Save Payment</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </section>
   </main>
 

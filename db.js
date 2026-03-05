@@ -101,6 +101,32 @@ async function initDb() {
   // Migration: add receipt_image_path to transactions
   try { db.run('ALTER TABLE transactions ADD COLUMN receipt_image_path TEXT'); } catch (e) {}
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS bills (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      is_recurring INTEGER DEFAULT 1,
+      default_amount REAL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS bill_payments (
+      id TEXT PRIMARY KEY,
+      bill_id TEXT NOT NULL,
+      month TEXT NOT NULL,
+      amount_due REAL DEFAULT 0,
+      total_balance REAL DEFAULT 0,
+      amount_paid REAL DEFAULT 0,
+      date_paid TEXT,
+      status TEXT DEFAULT 'pending',
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   saveToFile();
 
   return wrapper;

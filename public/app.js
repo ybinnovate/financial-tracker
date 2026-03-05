@@ -33,6 +33,11 @@ currentMonth.setDate(1);
 let categoryChart = null;
 let monthlyChart = null;
 
+let bills = [];
+let billPayments = [];
+let billsMonth = new Date();
+billsMonth.setDate(1);
+
 // ── Persistence ─────────────────────────────────────────────
 function saveBudgets() {
   localStorage.setItem('ft_budgets', JSON.stringify(budgets));
@@ -45,6 +50,20 @@ async function fetchTransactions() {
   } catch (e) {
     console.error('Failed to fetch transactions:', e);
   }
+}
+
+async function fetchBills() {
+  try {
+    const resp = await fetch('/api/bills');
+    if (resp.ok) bills = await resp.json();
+  } catch (e) { console.error('Failed to fetch bills:', e); }
+}
+
+async function fetchBillPayments() {
+  try {
+    const resp = await fetch('/api/bill-payments?month=' + monthKey(billsMonth));
+    if (resp.ok) billPayments = await resp.json();
+  } catch (e) { console.error('Failed to fetch bill payments:', e); }
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -77,6 +96,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     if (btn.dataset.tab === 'yb') refreshYB();
     if (btn.dataset.tab === 'tax') refreshTax();
     if (btn.dataset.tab === 'receipts') refreshReceipts();
+    if (btn.dataset.tab === 'bills') refreshBills();
   });
 });
 
@@ -1383,6 +1403,175 @@ function refreshReceipts() {
   fetchReceipts().then(renderReceipts);
 }
 
+// ══════════════════════════════════════════════════════════════
+// ── BILLS ────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+document.getElementById('bills-prev-month').addEventListener('click', () => {
+  billsMonth.setMonth(billsMonth.getMonth() - 1);
+  refreshBills();
+});
+
+document.getElementById('bills-next-month').addEventListener('click', () => {
+  billsMonth.setMonth(billsMonth.getMonth() + 1);
+  refreshBills();
+});
+
+document.getElementById('bill-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const bill = {
+    id: uid(),
+    name: document.getElementById('bill-name').value.trim(),
+    is_recurring: document.getElementById('bill-recurring').checked ? 1 : 0,
+    default_amount: parseFloat(document.getElementById('bill-default-amount').value) || 0
+  };
+  try {
+    await fetch('/api/bills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bill)
+    });
+    await fetchBills();
+    renderBillDefinitions();
+    await fetchBillPayments();
+    renderBillPayments();
+  } catch (err) {
+    alert('Failed to save bill: ' + err.message);
+  }
+  e.target.reset();
+  document.getElementById('bill-recurring').checked = true;
+});
+
+async function deleteBill(id) {
+  if (!confirm('Delete this bill and all its payment history?')) return;
+  try {
+    await fetch('/api/bills/' + id, { method: 'DELETE' });
+    await fetchBills();
+    renderBillDefinitions();
+    await fetchBillPayments();
+    renderBillPayments();
+  } catch (err) {
+    alert('Failed to delete: ' + err.message);
+  }
+}
+
+function renderBillDefinitions() {
+  const list = document.getElementById('bill-definitions-list');
+  if (bills.length === 0) {
+    list.innerHTML = '<div class="empty-state">No bills registered yet. Add one above!</div>';
+    return;
+  }
+  list.innerHTML = bills.map(b => `
+    <div class="tx-item">
+      <div class="tx-icon expense" style="font-size:1.2rem">&#128176;</div>
+      <div class="tx-details">
+        <div class="tx-cat">${b.name}</div>
+        <div class="tx-desc">${b.is_recurring ? 'Recurring' : 'One-time'}${b.default_amount ? ' &middot; Default: ' + fmt(b.default_amount) : ''}</div>
+      </div>
+      <button class="tx-delete" onclick="deleteBill('${b.id}')" title="Delete">&times;</button>
+    </div>
+  `).join('');
+}
+
+function renderBillPayments() {
+  const mk = monthKey(billsMonth);
+  document.getElementById('bills-month-label').textContent = monthLabel(billsMonth);
+
+  const totalDue = billPayments.reduce((s, bp) => s + (bp.amount_due || 0), 0);
+  const totalPaid = billPayments.reduce((s, bp) => s + (bp.amount_paid || 0), 0);
+  const remaining = totalDue - totalPaid;
+
+  document.getElementById('bills-total-due').textContent = fmt(totalDue);
+  document.getElementById('bills-total-paid').textContent = fmt(totalPaid);
+  document.getElementById('bills-remaining').textContent = fmt(Math.max(0, remaining));
+
+  const list = document.getElementById('bill-payments-list');
+  if (billPayments.length === 0) {
+    list.innerHTML = '<div class="empty-state">No bills for this month.</div>';
+    return;
+  }
+
+  list.innerHTML = billPayments.map(bp => {
+    const statusClass = bp.status || 'pending';
+    const statusLabel = statusClass.charAt(0).toUpperCase() + statusClass.slice(1);
+    const paidDate = bp.date_paid
+      ? new Date(bp.date_paid + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '';
+
+    return `
+      <div class="bill-payment-row" onclick="openBillPaymentEdit('${bp.id}', '${bp.bill_id}', '${bp.month}')">
+        <div class="bill-payment-info">
+          <div class="bill-vendor">${bp.bill_name || 'Unknown'}</div>
+          <div class="bill-amounts">
+            Due: ${fmt(bp.amount_due || 0)} &middot;
+            Balance: ${fmt(bp.total_balance || 0)}${paidDate ? ' &middot; Paid: ' + paidDate : ''}
+          </div>
+        </div>
+        <div class="bill-payment-meta">
+          <div class="bill-paid-amount" style="color:${bp.amount_paid > 0 ? 'var(--income)' : 'var(--text-secondary)'}">
+            ${bp.amount_paid > 0 ? fmt(bp.amount_paid) : '$0.00'}
+          </div>
+          <span class="bill-status ${statusClass}">${statusLabel}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openBillPaymentEdit(id, billId, month) {
+  const bp = billPayments.find(p => p.id === id);
+  document.getElementById('bp-id').value = id;
+  document.getElementById('bp-bill-id').value = billId;
+  document.getElementById('bp-month').value = month;
+  document.getElementById('bp-amount-due').value = bp?.amount_due || '';
+  document.getElementById('bp-total-balance').value = bp?.total_balance || '';
+  document.getElementById('bp-amount-paid').value = bp?.amount_paid || '';
+  document.getElementById('bp-date-paid').value = bp?.date_paid || '';
+  document.getElementById('bp-notes').value = bp?.notes || '';
+  document.getElementById('bill-payment-modal-title').textContent = 'Edit Payment: ' + (bp?.bill_name || 'Bill');
+  document.getElementById('bill-payment-modal').style.display = 'flex';
+}
+
+function closeBillPaymentModal() {
+  document.getElementById('bill-payment-modal').style.display = 'none';
+}
+
+document.getElementById('bill-payment-modal-close').addEventListener('click', closeBillPaymentModal);
+document.getElementById('bill-payment-cancel').addEventListener('click', closeBillPaymentModal);
+document.getElementById('bill-payment-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeBillPaymentModal();
+});
+
+document.getElementById('bill-payment-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const payload = {
+    id: document.getElementById('bp-id').value,
+    bill_id: document.getElementById('bp-bill-id').value,
+    month: document.getElementById('bp-month').value,
+    amount_due: parseFloat(document.getElementById('bp-amount-due').value) || 0,
+    total_balance: parseFloat(document.getElementById('bp-total-balance').value) || 0,
+    amount_paid: parseFloat(document.getElementById('bp-amount-paid').value) || 0,
+    date_paid: document.getElementById('bp-date-paid').value || null,
+    notes: document.getElementById('bp-notes').value.trim()
+  };
+  try {
+    await fetch('/api/bill-payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    closeBillPaymentModal();
+    await fetchBillPayments();
+    renderBillPayments();
+  } catch (err) {
+    alert('Failed to save payment: ' + err.message);
+  }
+});
+
+async function refreshBills() {
+  await fetchBillPayments();
+  renderBillPayments();
+}
+
 // ── Init ────────────────────────────────────────────────────
 async function init() {
   document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
@@ -1407,6 +1596,10 @@ async function init() {
   document.getElementById('receipt-from').addEventListener('change', renderReceipts);
   document.getElementById('receipt-to').addEventListener('change', renderReceipts);
   document.getElementById('receipt-download-btn').addEventListener('click', downloadReceiptsInRange);
+  await fetchBills();
+  renderBillDefinitions();
+  await fetchBillPayments();
+  renderBillPayments();
 }
 
 init();

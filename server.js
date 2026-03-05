@@ -101,6 +101,79 @@ app.delete('/api/transactions/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// ── API: Bills ─────────────────────────────────────────────
+app.get('/api/bills', (req, res) => {
+  const rows = db.prepare('SELECT * FROM bills ORDER BY name').all();
+  res.json(rows);
+});
+
+app.post('/api/bills', (req, res) => {
+  const { id, name, is_recurring, default_amount, notes } = req.body;
+  if (!id || !name) return res.status(400).json({ error: 'Missing required fields' });
+  db.prepare(`
+    INSERT INTO bills (id, name, is_recurring, default_amount, notes)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, name.trim(), is_recurring ? 1 : 0, parseFloat(default_amount) || 0, notes || '');
+  res.json(db.prepare('SELECT * FROM bills WHERE id = ?').get(id));
+});
+
+app.delete('/api/bills/:id', (req, res) => {
+  db.prepare('DELETE FROM bill_payments WHERE bill_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM bills WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+app.get('/api/bill-payments', (req, res) => {
+  const month = req.query.month;
+  if (!month) return res.status(400).json({ error: 'month query param required' });
+
+  // Auto-generate pending entries for recurring bills
+  const recurringBills = db.prepare('SELECT * FROM bills WHERE is_recurring = 1').all();
+  for (const bill of recurringBills) {
+    const existing = db.prepare('SELECT id FROM bill_payments WHERE bill_id = ? AND month = ?').get(bill.id, month);
+    if (!existing) {
+      const payId = require('uuid').v4();
+      db.prepare(`
+        INSERT INTO bill_payments (id, bill_id, month, amount_due, total_balance, amount_paid, status)
+        VALUES (?, ?, ?, ?, 0, 0, 'pending')
+      `).run(payId, bill.id, month, bill.default_amount || 0);
+    }
+  }
+
+  const rows = db.prepare(`
+    SELECT bp.*, b.name as bill_name, b.is_recurring
+    FROM bill_payments bp
+    JOIN bills b ON bp.bill_id = b.id
+    WHERE bp.month = ?
+    ORDER BY b.name
+  `).all(month);
+  res.json(rows);
+});
+
+app.post('/api/bill-payments', (req, res) => {
+  const { id, bill_id, month, amount_due, total_balance, amount_paid, date_paid, notes } = req.body;
+  if (!id || !bill_id || !month) return res.status(400).json({ error: 'Missing required fields' });
+
+  const due = parseFloat(amount_due) || 0;
+  const paid = parseFloat(amount_paid) || 0;
+  let status = 'pending';
+  if (paid > 0 && paid >= due) status = 'paid';
+  else if (paid > 0) status = 'partial';
+
+  // Upsert: delete old then insert
+  db.prepare('DELETE FROM bill_payments WHERE id = ?').run(id);
+  db.prepare(`
+    INSERT INTO bill_payments (id, bill_id, month, amount_due, total_balance, amount_paid, date_paid, status, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, bill_id, month, due, parseFloat(total_balance) || 0, paid, date_paid || null, status, notes || '');
+  res.json(db.prepare('SELECT bp.*, b.name as bill_name FROM bill_payments bp JOIN bills b ON bp.bill_id = b.id WHERE bp.id = ?').get(id));
+});
+
+app.delete('/api/bill-payments/:id', (req, res) => {
+  db.prepare('DELETE FROM bill_payments WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 // ── API: Get all records ────────────────────────────────────
 app.get('/api/records', (req, res) => {
   const records = db.prepare('SELECT * FROM records ORDER BY date DESC').all();
