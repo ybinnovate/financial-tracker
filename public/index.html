@@ -128,6 +128,33 @@
         </form>
       </div>
 
+      <!-- Batch Receipt Upload -->
+      <div class="form-container">
+        <h3>Batch Receipt Scan</h3>
+        <input type="file" id="batch-receipt-input" accept="image/*" multiple style="display:none">
+        <div class="upload-zone" onclick="document.getElementById('batch-receipt-input').click()">
+          <div class="upload-placeholder" id="batch-receipt-placeholder">
+            <span class="upload-icon">&#128206;</span>
+            <span>Drag & drop or tap to upload multiple receipts</span>
+            <span class="upload-hint">(AI extracts each receipt — review before saving)</span>
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:0.5rem">
+          <div class="form-group">
+            <label for="batch-receipt-business">Business</label>
+            <select id="batch-receipt-business">
+              <option value="">Personal</option>
+              <option value="Uber">Uber</option>
+              <option value="易北教育">易北教育</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end">
+            <button type="button" id="batch-receipt-btn" class="btn-primary" style="display:none;width:100%">Extract All Receipts</button>
+          </div>
+        </div>
+        <div id="batch-receipt-status" style="display:none;text-align:center;padding:0.5rem;font-size:0.85rem;color:var(--accent)"></div>
+      </div>
+
       <!-- Statement Upload -->
       <div class="form-container">
         <h3>Import Credit Card Statement</h3>
@@ -242,6 +269,21 @@
             <span class="uber-stat-value" id="uber-net-profit">$0.00</span>
           </div>
         </div>
+      </div>
+
+      <!-- Batch Odometer Upload -->
+      <div class="form-container">
+        <h3>Batch Photo Upload</h3>
+        <input type="file" id="batch-odometer-input" accept="image/*" multiple style="display:none">
+        <div class="upload-zone" onclick="document.getElementById('batch-odometer-input').click()">
+          <div class="upload-placeholder" id="batch-odometer-placeholder">
+            <span class="upload-icon">&#128247;</span>
+            <span>Drag & drop or tap to upload multiple photos</span>
+            <span class="upload-hint">(Odometer photos &amp; gas receipts — AI reads values &amp; EXIF dates)</span>
+          </div>
+        </div>
+        <button type="button" id="batch-odometer-btn" class="btn-primary" style="display:none;margin-top:0.5rem;width:100%">Process All Photos</button>
+        <div id="batch-odometer-status" style="display:none;text-align:center;padding:0.5rem;font-size:0.85rem;color:var(--accent)"></div>
       </div>
 
       <div class="form-container">

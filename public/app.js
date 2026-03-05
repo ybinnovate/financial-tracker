@@ -201,6 +201,69 @@ txExtractBtn.addEventListener('click', async () => {
   }
 });
 
+// ── Batch Receipt Extraction ────────────────────────────────
+const batchReceiptInput = document.getElementById('batch-receipt-input');
+const batchReceiptBtn = document.getElementById('batch-receipt-btn');
+const batchReceiptStatus = document.getElementById('batch-receipt-status');
+
+batchReceiptInput.addEventListener('change', () => {
+  batchReceiptBtn.style.display = batchReceiptInput.files.length ? 'block' : 'none';
+  batchReceiptStatus.style.display = 'none';
+  const placeholder = document.getElementById('batch-receipt-placeholder');
+  if (batchReceiptInput.files.length) {
+    placeholder.innerHTML = `<span class="upload-icon">&#128206;</span><span>${batchReceiptInput.files.length} receipt(s) selected</span>`;
+  }
+});
+
+batchReceiptBtn.addEventListener('click', async () => {
+  const files = batchReceiptInput.files;
+  if (!files.length) return;
+
+  batchReceiptBtn.disabled = true;
+  batchReceiptBtn.textContent = 'Extracting...';
+  batchReceiptStatus.style.display = 'block';
+
+  const results = [];
+  for (let i = 0; i < files.length; i++) {
+    batchReceiptStatus.textContent = `Processing receipt ${i + 1} of ${files.length}...`;
+    const formData = new FormData();
+    formData.append('receiptImage', files[i]);
+    try {
+      const resp = await fetch('/api/extract-receipt', { method: 'POST', body: formData });
+      const data = await resp.json();
+      if (data.success) {
+        results.push({
+          description: data.storeName || 'Unknown',
+          amount: data.amount || 0,
+          date: data.date || new Date().toISOString().split('T')[0],
+          category: data.category || 'Other',
+          type: 'expense',
+          receiptImagePath: data.receiptImagePath || null
+        });
+      }
+    } catch (err) {
+      console.error('Batch receipt error:', err);
+    }
+  }
+
+  if (results.length > 0) {
+    pendingStatementTx = results;
+    document.getElementById('statement-business').value = document.getElementById('batch-receipt-business').value;
+    showStatementReview();
+    batchReceiptStatus.textContent = `Extracted ${results.length} of ${files.length} receipts.`;
+    batchReceiptStatus.style.color = 'var(--income)';
+  } else {
+    batchReceiptStatus.textContent = 'Could not extract any receipts.';
+    batchReceiptStatus.style.color = 'var(--expense)';
+  }
+
+  batchReceiptBtn.disabled = false;
+  batchReceiptBtn.textContent = 'Extract All Receipts';
+  batchReceiptInput.value = '';
+  document.getElementById('batch-receipt-placeholder').innerHTML = '<span class="upload-icon">&#128206;</span><span>Drag & drop or tap to upload multiple receipts</span><span class="upload-hint">(AI extracts each receipt — review before saving)</span>';
+  batchReceiptBtn.style.display = 'none';
+});
+
 // ── Statement Extraction ────────────────────────────────────
 const stmtFile = document.getElementById('statement-file');
 const stmtExtractBtn = document.getElementById('statement-extract-btn');
@@ -706,10 +769,17 @@ function setupDropZone(inputId) {
   zone.addEventListener('drop', (e) => {
     e.preventDefault();
     zone.classList.remove('drag-over');
-    const file = e.dataTransfer.files?.[0];
-    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
-      const dt = new DataTransfer();
-      dt.items.add(file);
+    const dt = new DataTransfer();
+    const droppedFiles = e.dataTransfer.files;
+    if (input.multiple) {
+      for (const f of droppedFiles) {
+        if (f.type.startsWith('image/') || f.type === 'application/pdf') dt.items.add(f);
+      }
+    } else {
+      const f = droppedFiles[0];
+      if (f && (f.type.startsWith('image/') || f.type === 'application/pdf')) dt.items.add(f);
+    }
+    if (dt.files.length) {
       input.files = dt.files;
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }
@@ -717,6 +787,63 @@ function setupDropZone(inputId) {
 }
 setupDropZone('statement-file');
 setupDropZone('yb-statement-file');
+setupDropZone('batch-receipt-input');
+setupDropZone('batch-odometer-input');
+
+// ── Batch Odometer Upload ───────────────────────────────────
+const batchOdoInput = document.getElementById('batch-odometer-input');
+const batchOdoBtn = document.getElementById('batch-odometer-btn');
+const batchOdoStatus = document.getElementById('batch-odometer-status');
+
+batchOdoInput.addEventListener('change', () => {
+  batchOdoBtn.style.display = batchOdoInput.files.length ? 'block' : 'none';
+  batchOdoStatus.style.display = 'none';
+  const placeholder = document.getElementById('batch-odometer-placeholder');
+  if (batchOdoInput.files.length) {
+    placeholder.innerHTML = `<span class="upload-icon">&#128247;</span><span>${batchOdoInput.files.length} photo(s) selected</span>`;
+  }
+});
+
+batchOdoBtn.addEventListener('click', async () => {
+  const files = batchOdoInput.files;
+  if (!files.length) return;
+
+  batchOdoBtn.disabled = true;
+  batchOdoBtn.textContent = 'Processing...';
+  batchOdoStatus.style.display = 'block';
+
+  let saved = 0;
+  let errors = 0;
+  for (let i = 0; i < files.length; i++) {
+    batchOdoStatus.textContent = `Processing photo ${i + 1} of ${files.length}...`;
+    const formData = new FormData();
+    formData.append('odometerImage', files[i]);
+    formData.append('date', new Date().toISOString().split('T')[0]);
+    formData.append('earnings', '0');
+    try {
+      const resp = await fetch('/api/records', { method: 'POST', body: formData });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.syncError) console.warn('Notion sync error:', data.syncError);
+        saved++;
+      } else { errors++; }
+    } catch (err) {
+      console.error('Batch odometer error:', err);
+      errors++;
+    }
+  }
+
+  await fetchUberRecords();
+  renderUber();
+
+  batchOdoStatus.textContent = `Processed: ${saved} saved${errors ? ', ' + errors + ' failed' : ''}. AI extracted odometer values and dates from EXIF.`;
+  batchOdoStatus.style.color = errors ? 'var(--expense)' : 'var(--income)';
+  batchOdoBtn.disabled = false;
+  batchOdoBtn.textContent = 'Process All Photos';
+  batchOdoInput.value = '';
+  document.getElementById('batch-odometer-placeholder').innerHTML = '<span class="upload-icon">&#128247;</span><span>Drag & drop or tap to upload multiple photos</span><span class="upload-hint">(Odometer photos & gas receipts — AI reads values & EXIF dates)</span>';
+  batchOdoBtn.style.display = 'none';
+});
 
 // ── Uber Month Navigation ───────────────────────────────────
 document.getElementById('uber-prev-month').addEventListener('click', () => {
