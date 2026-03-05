@@ -74,6 +74,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.getElementById(btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'dashboard') refreshDashboard();
     if (btn.dataset.tab === 'uber') refreshUber();
+    if (btn.dataset.tab === 'tax') refreshTax();
   });
 });
 
@@ -849,6 +850,171 @@ function renderUber() {
 // Alias for tab navigation compatibility
 function refreshUber() { renderUber(); }
 
+// ══════════════════════════════════════════════════════════════
+// ── TAX SUMMARY ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+const IRS_MILEAGE_RATES = { 2023: 0.655, 2024: 0.67, 2025: 0.70, 2026: 0.70 };
+const STANDARD_DEDUCTIONS = { 2023: 13850, 2024: 14600, 2025: 15000, 2026: 15000 };
+const TAX_BRACKETS = [
+  [11925, 0.10], [36550, 0.12], [54875, 0.22], [93950, 0.24],
+  [53225, 0.32], [375825, 0.35], [Infinity, 0.37]
+];
+
+function calcFederalTax(taxableIncome) {
+  let tax = 0, remaining = taxableIncome;
+  for (const [width, rate] of TAX_BRACKETS) {
+    if (remaining <= 0) break;
+    const amt = Math.min(remaining, width);
+    tax += amt * rate;
+    remaining -= amt;
+  }
+  return tax;
+}
+
+function populateTaxYears() {
+  const years = new Set([new Date().getFullYear()]);
+  transactions.forEach(t => years.add(new Date(t.date + 'T00:00:00').getFullYear()));
+  uberRecords.forEach(r => years.add(new Date(r.date + 'T00:00:00').getFullYear()));
+  const sorted = [...years].sort((a, b) => b - a);
+  const select = document.getElementById('tax-year');
+  select.innerHTML = sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+}
+
+function refreshTax() {
+  const year = parseInt(document.getElementById('tax-year').value);
+  const mileageRate = IRS_MILEAGE_RATES[year] || 0.70;
+  const stdDeduction = STANDARD_DEDUCTIONS[year] || 15000;
+
+  document.getElementById('tax-mileage-rate').textContent = '$' + mileageRate.toFixed(2);
+  document.getElementById('tax-std-ded-label').textContent = fmt(stdDeduction);
+
+  // === UBER ===
+  const yearRecords = uberRecords.filter(r => new Date(r.date + 'T00:00:00').getFullYear() === year);
+  const uberEarnings = yearRecords.reduce((s, r) => s + (r.earnings || 0), 0);
+  const uberGas = yearRecords.reduce((s, r) => s + (r.gas_cost || 0), 0);
+
+  let businessMiles = 0;
+  yearRecords.forEach(r => {
+    if (r.start_miles && r.odometer_reading) {
+      businessMiles += r.odometer_reading - r.start_miles;
+    }
+  });
+
+  const mileageDed = businessMiles * mileageRate;
+  const uberNetTaxable = Math.max(0, uberEarnings - mileageDed);
+
+  document.getElementById('tax-uber-earnings').textContent = fmt(uberEarnings);
+  document.getElementById('tax-uber-biz-miles').textContent = businessMiles.toFixed(1) + ' mi';
+  document.getElementById('tax-uber-mileage-ded').textContent = '-' + fmt(mileageDed);
+  document.getElementById('tax-uber-gas').textContent = fmt(uberGas);
+  document.getElementById('tax-uber-net').textContent = fmt(uberNetTaxable);
+
+  // === 易北教育 ===
+  const ybTx = transactions.filter(t => t.business === '易北教育' && new Date(t.date + 'T00:00:00').getFullYear() === year);
+  const ybRevenue = ybTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const ybExpenses = ybTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const ybNet = ybRevenue - ybExpenses;
+
+  document.getElementById('tax-yb-revenue').textContent = fmt(ybRevenue);
+  document.getElementById('tax-yb-expenses').textContent = '-' + fmt(ybExpenses);
+  document.getElementById('tax-yb-net').textContent = fmt(ybNet);
+
+  // Expense breakdown by category
+  const ybByCategory = {};
+  ybTx.filter(t => t.type === 'expense').forEach(t => {
+    ybByCategory[t.category] = (ybByCategory[t.category] || 0) + t.amount;
+  });
+  document.getElementById('tax-yb-breakdown').innerHTML = Object.entries(ybByCategory)
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, amt]) => `<div class="tax-row sub"><span>${cat}</span><span>${fmt(amt)}</span></div>`)
+    .join('');
+
+  // === Personal ===
+  const personalTx = transactions.filter(t => !t.business && new Date(t.date + 'T00:00:00').getFullYear() === year);
+  const personalIncome = personalTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const personalExpenses = personalTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+  document.getElementById('tax-personal-income').textContent = fmt(personalIncome);
+  document.getElementById('tax-personal-expenses').textContent = '-' + fmt(personalExpenses);
+  document.getElementById('tax-personal-net').textContent = fmt(personalIncome - personalExpenses);
+
+  // === Tax Estimates ===
+  const seIncome = Math.max(0, uberNetTaxable) + Math.max(0, ybNet);
+  const seTaxBase = seIncome * 0.9235;
+  const seTax = seTaxBase * 0.153;
+  const seDeduction = seTax / 2;
+
+  const agi = personalIncome + seIncome - seDeduction;
+  const taxableIncome = Math.max(0, agi - stdDeduction);
+  const fedTax = calcFederalTax(taxableIncome);
+  const totalTax = seTax + fedTax;
+
+  const totalGrossIncome = personalIncome + uberEarnings + ybRevenue;
+  const effectiveRate = totalGrossIncome > 0 ? (totalTax / totalGrossIncome * 100).toFixed(1) : '0.0';
+
+  document.getElementById('tax-se-income').textContent = fmt(seIncome);
+  document.getElementById('tax-se-tax').textContent = fmt(seTax);
+  document.getElementById('tax-se-ded').textContent = '-' + fmt(seDeduction);
+  document.getElementById('tax-agi').textContent = fmt(agi);
+  document.getElementById('tax-std-ded').textContent = '-' + fmt(stdDeduction);
+  document.getElementById('tax-taxable').textContent = fmt(taxableIncome);
+  document.getElementById('tax-fed').textContent = fmt(fedTax);
+  document.getElementById('tax-total').textContent = fmt(totalTax);
+  document.getElementById('tax-rate').textContent = effectiveRate + '%';
+}
+
+function exportTaxSummary() {
+  const year = document.getElementById('tax-year').value;
+  const get = id => document.getElementById(id).textContent;
+
+  const lines = [
+    `TAX SUMMARY - ${year}`,
+    '='.repeat(50),
+    '',
+    'UBER / RIDESHARE (Schedule C)',
+    `  Gross Earnings:         ${get('tax-uber-earnings')}`,
+    `  Business Miles:         ${get('tax-uber-biz-miles')}`,
+    `  Mileage Deduction:      ${get('tax-uber-mileage-ded')}`,
+    `  Actual Gas Costs:       ${get('tax-uber-gas')}`,
+    `  Net Taxable:            ${get('tax-uber-net')}`,
+    '',
+    '易北教育 (Schedule C)',
+    `  Revenue:                ${get('tax-yb-revenue')}`,
+    `  Expenses:               ${get('tax-yb-expenses')}`,
+    `  Net Profit:             ${get('tax-yb-net')}`,
+    '',
+    'PERSONAL',
+    `  Income:                 ${get('tax-personal-income')}`,
+    `  Expenses:               ${get('tax-personal-expenses')}`,
+    `  Net:                    ${get('tax-personal-net')}`,
+    '',
+    'ESTIMATED TAX LIABILITY',
+    `  Self-Employment Income: ${get('tax-se-income')}`,
+    `  SE Tax (15.3%):         ${get('tax-se-tax')}`,
+    `  1/2 SE Tax Deduction:   ${get('tax-se-ded')}`,
+    `  AGI:                    ${get('tax-agi')}`,
+    `  Standard Deduction:     ${get('tax-std-ded')}`,
+    `  Taxable Income:         ${get('tax-taxable')}`,
+    `  Federal Income Tax:     ${get('tax-fed')}`,
+    `  Total Estimated Tax:    ${get('tax-total')}`,
+    `  Effective Rate:         ${get('tax-rate')}`,
+    '',
+    'Note: These are estimates. Consult a tax professional.',
+    `Generated: ${new Date().toLocaleDateString()}`
+  ];
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `tax-summary-${year}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── Init ────────────────────────────────────────────────────
 async function init() {
   document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
@@ -864,6 +1030,9 @@ async function init() {
   setupImagePreview('uber-receipt-image', 'receipt-preview', 'receipt-placeholder');
   await fetchUberRecords();
   renderUber();
+  populateTaxYears();
+  document.getElementById('tax-year').addEventListener('change', refreshTax);
+  document.getElementById('tax-export-btn').addEventListener('click', exportTaxSummary);
 }
 
 init();

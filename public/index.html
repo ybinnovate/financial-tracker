@@ -15,6 +15,7 @@
       <button class="nav-btn" data-tab="transactions">Transactions</button>
       <button class="nav-btn" data-tab="budgets">Budgets</button>
       <button class="nav-btn" data-tab="uber">Uber</button>
+      <button class="nav-btn" data-tab="tax">Tax</button>
     </nav>
   </header>
 
@@ -356,6 +357,70 @@
           </form>
         </div>
       </div>
+    </section>
+
+    <!-- Tax Summary Tab -->
+    <section id="tax" class="tab-content">
+      <div class="tax-header">
+        <h3>Tax Summary</h3>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <label style="font-size:0.85rem;color:var(--text-muted)">Tax Year</label>
+          <select id="tax-year" style="width:auto"></select>
+        </div>
+      </div>
+
+      <div class="tax-grid">
+        <div class="tax-card">
+          <h4>Uber / Rideshare <span class="tax-badge">Schedule C</span></h4>
+          <div class="tax-rows">
+            <div class="tax-row"><span>Gross Earnings</span><span id="tax-uber-earnings">$0.00</span></div>
+            <div class="tax-row"><span>Business Miles Driven</span><span id="tax-uber-biz-miles">0.0 mi</span></div>
+            <div class="tax-row green"><span>Mileage Deduction (<span id="tax-mileage-rate">$0.70</span>/mi)</span><span id="tax-uber-mileage-ded">-$0.00</span></div>
+            <div class="tax-row sub"><span>Actual Gas Costs (for comparison)</span><span id="tax-uber-gas">$0.00</span></div>
+            <div class="tax-row total"><span>Net Taxable (Uber)</span><span id="tax-uber-net">$0.00</span></div>
+          </div>
+        </div>
+
+        <div class="tax-card">
+          <h4>易北教育 <span class="tax-badge">Schedule C</span></h4>
+          <div class="tax-rows">
+            <div class="tax-row"><span>Revenue</span><span id="tax-yb-revenue">$0.00</span></div>
+            <div class="tax-row red"><span>Total Expenses</span><span id="tax-yb-expenses">-$0.00</span></div>
+            <div id="tax-yb-breakdown"></div>
+            <div class="tax-row total"><span>Net Profit</span><span id="tax-yb-net">$0.00</span></div>
+          </div>
+        </div>
+
+        <div class="tax-card">
+          <h4>Personal Summary</h4>
+          <div class="tax-rows">
+            <div class="tax-row"><span>Total Income</span><span id="tax-personal-income">$0.00</span></div>
+            <div class="tax-row red"><span>Total Expenses</span><span id="tax-personal-expenses">-$0.00</span></div>
+            <div class="tax-row total"><span>Net</span><span id="tax-personal-net">$0.00</span></div>
+          </div>
+        </div>
+
+        <div class="tax-card full-width">
+          <h4>Estimated Tax Liability</h4>
+          <div class="tax-rows">
+            <div class="tax-row"><span>Total Self-Employment Income</span><span id="tax-se-income">$0.00</span></div>
+            <div class="tax-row red"><span>Self-Employment Tax (15.3%)</span><span id="tax-se-tax">$0.00</span></div>
+            <div class="tax-row green"><span>1/2 SE Tax Deduction</span><span id="tax-se-ded">-$0.00</span></div>
+            <div class="tax-row"><span>Adjusted Gross Income</span><span id="tax-agi">$0.00</span></div>
+            <div class="tax-row green"><span>Standard Deduction</span><span id="tax-std-ded">-$0.00</span></div>
+            <div class="tax-row"><span>Taxable Income</span><span id="tax-taxable">$0.00</span></div>
+            <div class="tax-row red"><span>Federal Income Tax</span><span id="tax-fed">$0.00</span></div>
+            <div class="tax-row total"><span>Total Estimated Tax</span><span id="tax-total">$0.00</span></div>
+            <div class="tax-row total"><span>Effective Rate</span><span id="tax-rate">0%</span></div>
+          </div>
+          <div class="tax-note">
+            Estimates use <span id="tax-std-ded-label">$15,000</span> standard deduction (single filer).
+            Quarterly estimated payments may be required. Consult a tax professional for exact amounts.
+          </div>
+        </div>
+      </div>
+
+      <button id="tax-export-btn" class="btn-primary" style="width:100%;margin-top:1rem">Export Tax Summary</button>
     </section>
   </main>
 

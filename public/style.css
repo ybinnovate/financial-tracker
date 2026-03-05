@@ -788,6 +788,94 @@ textarea:focus {
   background: var(--border);
 }
 
+/* Tax Summary */
+.tax-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.tax-header h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.tax-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.tax-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.tax-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.tax-card h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tax-badge {
+  font-size: 0.65rem;
+  background: var(--accent);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.tax-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tax-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  padding: 0.35rem 0;
+}
+
+.tax-row.sub {
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.tax-row.total {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  margin-top: 0.25rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.tax-row.green span:last-child { color: var(--income); }
+.tax-row.red span:last-child { color: var(--expense); }
+
+.tax-note {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 0.75rem;
+  background: var(--bg);
+  border-radius: 6px;
+}
+
 /* Responsive */
 @media (max-width: 700px) {
   header {
@@ -817,5 +905,9 @@ textarea:focus {
 
   .uber-record-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tax-grid {
+    grid-template-columns: 1fr;
   }
 }
