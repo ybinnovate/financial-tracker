@@ -219,10 +219,10 @@ app.post('/api/records',
           };
 
           if (odometerImagePath) {
-            properties['Mileage Image'] = { files: [{ name: 'Odometer', type: 'external', external: { url: `${appUrl}${odometerImagePath}` } }] };
+            properties['Mileage Image'] = { url: `${appUrl}${odometerImagePath}` };
           }
           if (gasReceiptImagePath) {
-            properties['Gas Receipt'] = { files: [{ name: 'Receipt', type: 'external', external: { url: `${appUrl}${gasReceiptImagePath}` } }] };
+            properties['Gas Receipt'] = { url: `${appUrl}${gasReceiptImagePath}` };
           }
 
           if (notionPageId) {
