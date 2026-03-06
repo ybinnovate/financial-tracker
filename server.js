@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { initDb } = require('./db');
@@ -193,6 +194,7 @@ app.post('/api/extract-odometer',
 
       const exifDate = await getExifDate(file.path);
       file = await convertHeicIfNeeded(file);
+      file = deduplicateFile(file);
       let reading = null;
       let error = null;
 
@@ -237,6 +239,32 @@ async function convertHeicIfNeeded(fileObj) {
     console.error('HEIC conversion failed:', e.message);
     return fileObj; // fallback to original
   }
+}
+
+// Helper: deduplicate uploaded files by SHA-256 content hash
+// Returns the (possibly existing) filename. Deletes the new file if duplicate.
+function deduplicateFile(fileObj) {
+  if (!fileObj || !fs.existsSync(fileObj.path)) return fileObj;
+  const buffer = fs.readFileSync(fileObj.path);
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+  const existing = db.prepare('SELECT filename FROM file_hashes WHERE hash = ?').get(hash);
+  if (existing) {
+    // Duplicate — delete the new file and reuse existing
+    const existingPath = path.join(uploadDir, existing.filename);
+    if (fs.existsSync(existingPath)) {
+      console.log(`Dedup: ${fileObj.filename} → reusing ${existing.filename}`);
+      try { fs.unlinkSync(fileObj.path); } catch (e) {}
+      fileObj.filename = existing.filename;
+      fileObj.path = existingPath;
+      return fileObj;
+    }
+    // Existing file was deleted — update hash record to point to new file
+    db.prepare('UPDATE file_hashes SET filename = ? WHERE hash = ?').run(fileObj.filename, hash);
+  } else {
+    db.prepare('INSERT INTO file_hashes (hash, filename) VALUES (?, ?)').run(hash, fileObj.filename);
+  }
+  return fileObj;
 }
 
 // Helper: extract EXIF date from an image file
@@ -304,10 +332,13 @@ app.post('/api/records',
       if (!exifDate && odometerImage) exifDate = await getExifDate(odometerImage.path);
       if (!exifDate && gasReceiptImage) exifDate = await getExifDate(gasReceiptImage.path);
 
-      // ── Convert HEIC files to JPEG ──────────────────────────
+      // ── Convert HEIC files to JPEG, then deduplicate ────────
       startOdometerImage = await convertHeicIfNeeded(startOdometerImage);
       odometerImage = await convertHeicIfNeeded(odometerImage);
       gasReceiptImage = await convertHeicIfNeeded(gasReceiptImage);
+      if (startOdometerImage) startOdometerImage = deduplicateFile(startOdometerImage);
+      if (odometerImage) odometerImage = deduplicateFile(odometerImage);
+      if (gasReceiptImage) gasReceiptImage = deduplicateFile(gasReceiptImage);
 
       // ── Extract start odometer from image ─────────────────
       if (startOdometerImage && ai) {
@@ -530,6 +561,7 @@ app.post('/api/extract-receipt',
 
     try {
       await convertHeicIfNeeded(req.file);
+      deduplicateFile(req.file);
       const base64 = fs.readFileSync(req.file.path, 'base64');
       const resp = await ai.chat.completions.create({
         model: VISION_MODEL,
@@ -681,6 +713,94 @@ app.get('/api/config', (req, res) => {
     aiConfigured: !!ai,
     visionModel: VISION_MODEL
   });
+});
+
+// ── API: Deduplicate existing files ─────────────────────────
+app.post('/api/dedup-files', (req, res) => {
+  try {
+    const files = fs.readdirSync(uploadDir);
+    const hashMap = {}; // hash → first filename
+    let duplicatesRemoved = 0;
+    let bytesFreed = 0;
+
+    // Build hash map of all files
+    for (const file of files) {
+      const filePath = path.join(uploadDir, file);
+      try {
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile()) continue;
+        const buffer = fs.readFileSync(filePath);
+        const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+        if (hashMap[hash]) {
+          // Duplicate found — update DB references to point to the original
+          const original = hashMap[hash];
+          const oldPath = `/uploads/${file}`;
+          const newPath = `/uploads/${original}`;
+
+          // Update all image path columns in records
+          db.prepare('UPDATE records SET odometer_image_path = ? WHERE odometer_image_path = ?').run(newPath, oldPath);
+          db.prepare('UPDATE records SET start_image_path = ? WHERE start_image_path = ?').run(newPath, oldPath);
+          db.prepare('UPDATE records SET gas_receipt_image_path = ? WHERE gas_receipt_image_path = ?').run(newPath, oldPath);
+          // Update transactions
+          db.prepare('UPDATE transactions SET receipt_image_path = ? WHERE receipt_image_path = ?').run(newPath, oldPath);
+
+          // Delete the duplicate file
+          fs.unlinkSync(filePath);
+          duplicatesRemoved++;
+          bytesFreed += stat.size;
+          console.log(`Dedup cleanup: removed ${file} (dup of ${original})`);
+        } else {
+          hashMap[hash] = file;
+          // Register in file_hashes table
+          const existing = db.prepare('SELECT hash FROM file_hashes WHERE hash = ?').get(hash);
+          if (!existing) {
+            db.prepare('INSERT INTO file_hashes (hash, filename) VALUES (?, ?)').run(hash, file);
+          }
+        }
+      } catch (e) {
+        console.error(`Dedup error for ${file}:`, e.message);
+      }
+    }
+
+    // Also find orphaned files (not referenced by any DB record)
+    const referencedPaths = new Set();
+    db.prepare('SELECT odometer_image_path, start_image_path, gas_receipt_image_path FROM records').all().forEach(r => {
+      if (r.odometer_image_path) referencedPaths.add(r.odometer_image_path);
+      if (r.start_image_path) referencedPaths.add(r.start_image_path);
+      if (r.gas_receipt_image_path) referencedPaths.add(r.gas_receipt_image_path);
+    });
+    db.prepare('SELECT receipt_image_path FROM transactions WHERE receipt_image_path IS NOT NULL').all().forEach(t => {
+      if (t.receipt_image_path) referencedPaths.add(t.receipt_image_path);
+    });
+
+    let orphansRemoved = 0;
+    const remainingFiles = fs.readdirSync(uploadDir);
+    for (const file of remainingFiles) {
+      const refPath = `/uploads/${file}`;
+      if (!referencedPaths.has(refPath)) {
+        const filePath = path.join(uploadDir, file);
+        const stat = fs.statSync(filePath);
+        fs.unlinkSync(filePath);
+        orphansRemoved++;
+        bytesFreed += stat.size;
+        // Remove from hash table too
+        db.prepare('DELETE FROM file_hashes WHERE filename = ?').run(file);
+        console.log(`Orphan cleanup: removed ${file}`);
+      }
+    }
+
+    res.json({
+      duplicatesRemoved,
+      orphansRemoved,
+      bytesFreed,
+      bytesFreedMB: (bytesFreed / 1024 / 1024).toFixed(2),
+      remainingFiles: fs.readdirSync(uploadDir).length
+    });
+  } catch (err) {
+    console.error('Dedup error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── SPA fallback ────────────────────────────────────────────

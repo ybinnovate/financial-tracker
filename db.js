@@ -135,6 +135,14 @@ async function initDb() {
   // Migration: add due_date to bill_payments
   try { db.run('ALTER TABLE bill_payments ADD COLUMN due_date TEXT'); } catch (e) {}
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS file_hashes (
+      hash TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   saveToFile();
 
   return wrapper;
