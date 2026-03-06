@@ -789,40 +789,60 @@ function setupImagePreview(inputId, previewId, placeholderId) {
 function setupDropZone(inputId) {
   const input = document.getElementById(inputId);
   if (!input) return;
-  // Search up from input to find the nearest .upload-zone sibling
   const container = input.closest('.form-container') || input.parentElement;
   const zone = container.querySelector('.upload-zone');
-  if (!zone) { console.warn('No .upload-zone found for', inputId); return; }
+  if (!zone) return;
 
-  let dragCounter = 0; // Track enter/leave on child elements
-  zone.addEventListener('dragenter', (e) => { e.preventDefault(); e.stopPropagation(); dragCounter++; zone.classList.add('drag-over'); });
-  zone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; });
-  zone.addEventListener('dragleave', (e) => { e.stopPropagation(); dragCounter--; if (dragCounter <= 0) { dragCounter = 0; zone.classList.remove('drag-over'); } });
+  let dragCounter = 0;
+
+  zone.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    zone.classList.add('drag-over');
+  });
+
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  zone.addEventListener('dragleave', () => {
+    dragCounter--;
+    if (dragCounter <= 0) { dragCounter = 0; zone.classList.remove('drag-over'); }
+  });
+
   zone.addEventListener('drop', (e) => {
     e.preventDefault();
-    e.stopPropagation();
     dragCounter = 0;
     zone.classList.remove('drag-over');
-    const dt = new DataTransfer();
-    const droppedFiles = e.dataTransfer.files;
-    if (input.multiple) {
-      for (const f of droppedFiles) {
-        if (isImageFile(f) || f.type === 'application/pdf') dt.items.add(f);
+
+    const files = e.dataTransfer.files;
+    if (!files.length) return;
+
+    try {
+      const dt = new DataTransfer();
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        if (input.multiple || i === 0) {
+          if (isImageFile(f) || f.type === 'application/pdf') dt.items.add(f);
+        }
       }
-    } else {
-      const f = droppedFiles[0];
-      if (f && (isImageFile(f) || f.type === 'application/pdf')) dt.items.add(f);
-    }
-    if (dt.files.length) {
-      input.files = dt.files;
+      if (dt.files.length) {
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    } catch (err) {
+      // Fallback: directly use the dropped FileList (works if all types accepted)
+      console.warn('DataTransfer fallback for', inputId);
+      input.files = files;
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }
   });
 }
 
-// Prevent browser from opening files dropped outside a drop zone
-document.addEventListener('dragover', (e) => e.preventDefault());
-document.addEventListener('drop', (e) => e.preventDefault());
+// Prevent browser from navigating to dropped files outside a drop zone
+document.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; });
+document.addEventListener('drop', (e) => { e.preventDefault(); });
 setupDropZone('statement-file');
 setupDropZone('yb-statement-file');
 setupDropZone('batch-receipt-input');
@@ -909,24 +929,23 @@ batchOdoBtn.addEventListener('click', async () => {
     batchOdoStatus.textContent = `Creating record ${di + 1} of ${dates.length} (${dt})...`;
 
     const tripMeter = group.filter(e => e.reading < 1000);
-    const odometer = group.filter(e => e.reading >= 1000).sort((a, b) => a.reading - b.reading);
+    // Deduplicate odometer readings — keep only unique values (reject duplicate images)
+    const odometerRaw = group.filter(e => e.reading >= 1000).sort((a, b) => a.reading - b.reading);
+    const seen = new Set();
+    const odometer = odometerRaw.filter(e => { if (seen.has(e.reading)) return false; seen.add(e.reading); return true; });
     const hasTripMeter = tripMeter.length > 0;
 
     const formData = new FormData();
     formData.append('date', dt);
     formData.append('earnings', '0');
 
-    if (odometer.length >= 2 && odometer[0].reading !== odometer[odometer.length - 1].reading) {
-      // Two+ odometer photos with different readings: lowest = start, highest = end
+    if (odometer.length >= 2) {
+      // Two+ unique odometer readings: lowest = start, highest = end
       formData.append('startMiles', odometer[0].reading);
       formData.append('startImageFilename', odometer[0].filename);
       formData.append('odometerReading', odometer[odometer.length - 1].reading);
       formData.append('odometerImageFilename', odometer[odometer.length - 1].filename);
       autoPaired++;
-    } else if (odometer.length >= 2) {
-      // Multiple photos with same reading — treat as single (duplicate photos)
-      formData.append('odometerReading', odometer[0].reading);
-      formData.append('odometerImageFilename', odometer[0].filename);
     } else if (odometer.length === 1 && hasTripMeter) {
       // Trip meter + one odometer = start-of-day pattern
       // Server will auto-calc personal miles from gap to previous day's end
@@ -1948,16 +1967,21 @@ async function init() {
   document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('uber-date').value = new Date().toISOString().split('T')[0];
   populateCategoryDropdowns();
-  await fetchTransactions();
+
+  // Fetch all data first, then render
+  await Promise.all([fetchTransactions(), fetchUberRecords(), fetchBills()]);
+
+  // Now render everything with all data available
   renderTransactions();
   renderBudgets();
+  renderUber();
   refreshDashboard();
+
   setupImagePreview('tx-receipt-image', 'tx-receipt-preview', 'tx-receipt-placeholder');
   setupImagePreview('uber-start-image', 'start-preview', 'start-placeholder');
   setupImagePreview('uber-odometer-image', 'odometer-preview', 'odometer-placeholder');
   setupImagePreview('uber-receipt-image', 'receipt-preview', 'receipt-placeholder');
-  await fetchUberRecords();
-  renderUber();
+
   document.getElementById('yb-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('yb-type').addEventListener('change', updateYbCategories);
   updateYbCategories();
@@ -1967,7 +1991,6 @@ async function init() {
   document.getElementById('receipt-from').addEventListener('change', renderReceipts);
   document.getElementById('receipt-to').addEventListener('change', renderReceipts);
   document.getElementById('receipt-download-btn').addEventListener('click', downloadReceiptsInRange);
-  await fetchBills();
   renderBillDefinitions();
   await fetchBillPayments();
   renderBillPayments();

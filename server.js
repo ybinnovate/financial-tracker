@@ -542,6 +542,27 @@ app.delete('/api/records/:id', async (req, res) => {
   }
 });
 
+// ── API: Patch record fields directly ─────────────────────
+app.patch('/api/records/:id', express.json(), (req, res) => {
+  try {
+    const record = db.prepare('SELECT * FROM records WHERE id = ?').get(req.params.id);
+    if (!record) return res.status(404).json({ error: 'Not found' });
+    const fields = req.body;
+    const allowed = ['odometer_reading', 'odometer_image_path', 'start_miles', 'start_image_path', 'gas_cost', 'gas_receipt_image_path', 'earnings', 'personal_miles', 'notes', 'date'];
+    const sets = [];
+    const vals = [];
+    for (const [k, v] of Object.entries(fields)) {
+      if (allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
+    }
+    if (sets.length === 0) return res.status(400).json({ error: 'No valid fields' });
+    vals.push(req.params.id);
+    db.prepare(`UPDATE records SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    res.json(db.prepare('SELECT * FROM records WHERE id = ?').get(req.params.id));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── API: Extract receipt for Transactions tab ───────────────
 app.post('/api/extract-receipt',
   upload.single('receiptImage'),
