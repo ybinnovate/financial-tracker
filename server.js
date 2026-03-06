@@ -496,17 +496,7 @@ app.post('/api/records',
 
           if (finalStartMiles !== null) properties['Start Miles'] = { number: finalStartMiles };
           if (finalOdometer !== null) properties['End Miles'] = { number: finalOdometer };
-          // Driven Miles is calculated (End - Start), skip syncing to avoid Notion property errors
-
-          if (startImagePath) {
-            properties['Start Image'] = { url: `${appUrl}${startImagePath}` };
-          }
-          if (odometerImagePath) {
-            properties['Mileage Image'] = { url: `${appUrl}${odometerImagePath}` };
-          }
-          if (gasReceiptImagePath) {
-            properties['Gas Receipt'] = { url: `${appUrl}${gasReceiptImagePath}` };
-          }
+          // Driven Miles, image URLs skipped — properties may not exist in user's Notion DB
 
           if (notionPageId) {
             await notion.pages.update({ page_id: notionPageId, properties });

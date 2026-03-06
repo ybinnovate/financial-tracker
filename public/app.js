@@ -916,13 +916,17 @@ batchOdoBtn.addEventListener('click', async () => {
     formData.append('date', dt);
     formData.append('earnings', '0');
 
-    if (odometer.length >= 2) {
-      // Two+ odometer photos: lowest = start, highest = end
+    if (odometer.length >= 2 && odometer[0].reading !== odometer[odometer.length - 1].reading) {
+      // Two+ odometer photos with different readings: lowest = start, highest = end
       formData.append('startMiles', odometer[0].reading);
       formData.append('startImageFilename', odometer[0].filename);
       formData.append('odometerReading', odometer[odometer.length - 1].reading);
       formData.append('odometerImageFilename', odometer[odometer.length - 1].filename);
       autoPaired++;
+    } else if (odometer.length >= 2) {
+      // Multiple photos with same reading — treat as single (duplicate photos)
+      formData.append('odometerReading', odometer[0].reading);
+      formData.append('odometerImageFilename', odometer[0].filename);
     } else if (odometer.length === 1 && hasTripMeter) {
       // Trip meter + one odometer = start-of-day pattern
       // Server will auto-calc personal miles from gap to previous day's end
